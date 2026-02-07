@@ -1,132 +1,259 @@
 # CLAUDE.md
 
-Guia para assistentes de IA que trabalham neste repositório.
+Este arquivo fornece orientação para o Claude Code (claude.ai/code) ao trabalhar com código neste repositório.
 
-## Visão geral do projeto
+## Project Overview
 
-**CleanTelegram** é um script Python de propósito único que automatiza a limpeza de uma conta Telegram via [Telethon](https://github.com/LonamiWebs/Telethon). Ele apaga históricos de conversa (usuários/bots) e sai de grupos/canais.
+CleanTelegram é um projeto Python que automatiza a limpeza de contas Telegram usando a biblioteca Telethon. O projeto segue práticas modernas de desenvolvimento Python com estrutura baseada em `src/` e ferramentas de qualidade configuradas.
 
-Este é um projeto **destrutivo por design** — qualquer alteração deve preservar os mecanismos de segurança existentes (`--dry-run`, confirmação interativa `"APAGAR TUDO"`).
+## Development Commands
 
-## Estrutura do repositório
-
-```text
-CleanTelegram/
-├── clean_telegram.py      # Script principal (ponto de entrada único)
-├── requirements.txt       # Dependências Python (telethon, python-dotenv)
-├── .env.example           # Template de variáveis de ambiente
-├── .gitignore             # Ignora .venv, .env, *.session, __pycache__
-└── README.md              # Documentação do projeto (pt-BR)
-```
-
-Não há subdiretórios de código, testes, CI/CD ou configuração de linting.
-
-## Stack tecnológica
-
-| Componente        | Tecnologia                          |
-| ----------------- | ----------------------------------- |
-| Linguagem         | Python 3.10+                        |
-| Cliente Telegram  | Telethon 1.42.0                     |
-| Variáveis de amb. | python-dotenv 1.2.1                 |
-| Runtime assíncrono| asyncio (stdlib)                    |
-| Gerenciador deps  | pip + requirements.txt              |
-
-## Comandos essenciais
+### Environment Management (UV)
+Recomendamos usar **UV** como gerenciador de pacotes para este projeto:
 
 ```bash
-# Criar e ativar virtualenv
-python -m venv .venv
+# Instalar UV (se ainda não tiver)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Criar ambiente virtual com UV
+uv venv
+
+# Ativar ambiente
+source .venv/bin/activate  # Linux/Mac
+# ou
+.venv\Scripts\activate     # Windows
+
+# Instalar dependências
+uv pip install -e ".[dev]"
+
+# Ou sem UV:
+pip install -e ".[dev]"
+```
+
+### Running the Application
+
+```bash
+# Executar com módulo Python
+python -m clean_telegram --help
+
+# Dry-run (testar sem alterações)
+python -m clean_telegram --dry-run
+
+# Executar com limitação de diálogos
+python -m clean_telegram --limit 10
+
+# Execução completa (requer confirmação)
+python -m clean_telegram
+
+# Execução sem confirmação
+python -m clean_telegram --yes
+```
+
+### Testing Commands
+
+```bash
+# pytest - Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src/clean_telegram --cov-report=html
+
+# Run specific test file
+pytest tests/test_client.py
+
+# Run with verbose output
+pytest -v
+
+# Run tests matching pattern
+pytest -k "test_delete"
+```
+
+### Code Quality Commands
+
+```bash
+# Format code with Black
+black src/ tests/
+
+# Check formatting without changes
+black --check src/ tests/
+
+# Sort imports
+isort src/ tests/
+
+# Check import sorting
+isort --check-only src/ tests/
+
+# Run linting with Flake8
+flake8 src/ tests/
+
+# Type checking with MyPy
+mypy src/
+
+# Run all quality checks at once
+black --check src/ tests/ && isort --check-only src/ tests/ && flake8 src/ tests/ && mypy src/
+```
+
+## Technology Stack
+
+### Core Technologies
+- **Python 3.10+** - Linguagem primária
+- **Telethon** - Biblioteca para interagir com Telegram MTProto API
+- **python-dotenv** - Gerenciamento de variáveis de ambiente
+
+### Development Tools
+- **UV** - Gerenciador de pacotes (recomendado)
+- **pytest** - Framework de testes
+- **pytest-asyncio** - Suporte para testes assíncronos
+- **pytest-cov** - Relatório de cobertura de testes
+
+### Code Quality Tools
+- **Black** - Formatador de código
+- **isort** - Ordenador de imports
+- **Flake8** - Linter (guia de estilo PEP 8)
+- **MyPy** - Verificador de tipos estáticos
+
+## Project Structure
+
+```
+CleanTelegram/
+├── src/
+│   └── clean_telegram/
+│       ├── __init__.py      # Pacote principal com exports
+│       ├── __main__.py      # Entry-point do CLI
+│       ├── client.py        # Funções de interação com Telegram
+│       └── utils.py         # Funções utilitárias
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py          # Configuração pytest
+│   ├── test_client.py       # Testes do módulo client
+│   └── test_utils.py        # Testes do módulo utils
+├── .env.example             # Exemplo de variáveis de ambiente
+├── .flake8                  # Configuração do Flake8
+├── pyproject.toml           # Configuração do projeto (moderno)
+├── requirements.txt         # Dependências de produção
+├── requirements-dev.txt     # Dependências de desenvolvimento
+├── README.md                # Documentação do projeto
+└── CLAUDE.md                # Este arquivo
+```
+
+## Naming Conventions
+- **Files/Modules**: `snake_case` (ex: `client.py`, `test_utils.py`)
+- **Classes**: `PascalCase` (ex: `TelegramClient`)
+- **Functions/Variables**: `snake_case` (ex: `process_dialog`, `env_int`)
+- **Constants**: `UPPER_SNAKE_CASE` (ex: `API_ID`)
+- **Private methods**: Prefixo `_` (ex: `_private_method`)
+
+## Python Guidelines
+
+### Type Hints
+Use type hints para parâmetros de função e valores de retorno:
+```python
+async def process_dialog(
+    client: TelegramClient,
+    entity: Union[Channel, Chat, User],
+    title: str,
+    index: int,
+    *,
+    dry_run: bool,
+) -> bool:
+    """Processa um diálogo do Telegram."""
+```
+
+### Code Style
+- Siga PEP 8
+- Limite de linha: 100 caracteres
+- Use docstrings para módulos, classes e funções
+- Funções devem ter propósito único
+- Use `logging` em vez de `print`
+
+### Best Practices
+- Use `pathlib` para operações com arquivos
+- Use context managers (`with`) para gerenciamento de recursos
+- Trate exceções apropriadamente com try/except
+- Use `asyncio` para operações I/O pesadas (Telethon é assíncrono)
+
+## Testing Standards
+
+### Test Structure
+- Organize testes espelhando a estrutura do código fonte
+- Use nomes descritivos para testes
+- Siga padrão AAA (Arrange, Act, Assert)
+- Use fixtures para dados comuns de teste
+
+### Coverage Goals
+- Objetivo: 70%+ de cobertura
+- Testes unitários para lógica de negócio
+- Testes assíncronos para funções Telethon
+
+### pytest Configuration
+Configuração está em `pyproject.toml`:
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+```
+
+## Environment Setup
+
+### Installation with UV
+```bash
+# Clonar repositório
+git clone https://github.com/gabrielramos/CleanTelegram
+cd CleanTelegram
+
+# Criar venv com UV
+uv venv
 source .venv/bin/activate
 
 # Instalar dependências
-pip install -r requirements.txt
+uv pip install -e ".[dev]"
 
-# Copiar e configurar variáveis de ambiente
+# Configurar ambiente
 cp .env.example .env
-# Editar .env com API_ID e API_HASH (https://my.telegram.org)
-
-# Execução em modo seguro (dry-run — não altera nada)
-python clean_telegram.py --dry-run
-
-# Execução real (pede confirmação "APAGAR TUDO")
-python clean_telegram.py
-
-# Pular confirmação interativa
-python clean_telegram.py --yes
-
-# Limitar quantidade de diálogos processados
-python clean_telegram.py --limit 10
-
-# Ver todas as opções
-python clean_telegram.py --help
+# Editar .env com API_ID e API_HASH
 ```
 
-## Arquitetura do código (`clean_telegram.py`)
+### Environment Variables
+- `API_ID`: ID da API do Telegram (obrigatório)
+- `API_HASH`: Hash da API do Telegram (obrigatório)
+- `SESSION_NAME`: Nome da sessão Telethon (opcional, padrão: "session")
 
-O script segue um fluxo linear assíncrono:
+## Security Guidelines
 
-1. **`main()`** — Entry-point: configura logging, carrega `.env`, parseia argumentos, pede confirmação e itera sobre os diálogos.
-2. **`_process_dialog()`** — Roteador que escolhe a ação correta conforme o tipo da entidade:
-   - `Channel` → `leave_channel()` (canais e megagrupos)
-   - `Chat` → `leave_legacy_chat()` (grupos legados), com fallback via `client.delete_dialog()`
-   - `User` / bots → `delete_dialog()` (apaga histórico)
-   - Tipo desconhecido → `client.delete_dialog()` (fallback genérico)
-3. **Funções auxiliares:**
-   - `env_int()` — Lê variável de ambiente obrigatória como int
-   - `safe_sleep()` — Delay entre operações (0.35s) para evitar rate limit
-   - `delete_dialog()` — Apaga histórico via `DeleteHistoryRequest`
-   - `leave_channel()` — Sai de canal/megagrupo via `LeaveChannelRequest`
-   - `leave_legacy_chat()` — Sai de grupo legado via `DeleteChatUserRequest`
+- Nunca commite `.env` com credenciais reais
+- Nunca commite arquivos `*.session` - contêm credenciais de autenticação do Telegram
+- Use `.env.example` como template
+- Valide input do usuário
+- Trate exceções de API apropriadamente (FloodWaitError, RPCError)
+- Use logs em vez de print para debug
 
-### Tratamento de erros
+## Development Workflow
 
-- **`FloodWaitError`**: Retry com backoff exponencial (até 5 tentativas). Aguarda o tempo indicado pela API antes de tentar novamente.
-- **`RPCError`**: Loga o erro e pula o diálogo.
-- **`Exception` genérica**: Catch-all com log completo do traceback.
+### Before Starting
+1. Ative o ambiente virtual
+2. Instale dependências: `uv pip install -e ".[dev]"`
+3. Configure `.env` com credenciais
 
-## Convenções do projeto
+### During Development
+1. Use type hints para melhor documentação
+2. Execute testes frequentemente
+3. Use mensagens de commit significativas
+4. Formate código com Black antes de commitar
 
-### Idioma
+### Before Committing
+1. `pytest` - Execute testes
+2. `black --check src/ tests/` - Verifique formatação
+3. `isort --check-only src/ tests/` - Verifique imports
+4. `flake8 src/ tests/` - Verifique lint
+5. `mypy src/` - Verifique tipos
 
-- **Documentação, comentários, docstrings e mensagens de log**: português brasileiro (pt-BR).
-- **Nomes de variáveis, funções e parâmetros**: inglês (padrão Python).
-- **Mensagens de commit**: português é aceitável, mas o prefixo segue Conventional Commits em inglês (`feat:`, `fix:`, `docs:`, `chore:`).
+## CLI Reference
 
-### Estilo de código
+```bash
+python -m clean_telegram --help
+```
 
-- Sem linter ou formatter configurado — manter consistência com o código existente.
-- Type hints nas assinaturas de funções.
-- Docstrings em português para todas as funções.
-- Keyword-only arguments para flags booleanas (ex.: `*, dry_run: bool`).
-- Logging via `logger` (módulo `logging`), não `print()` (exceto para interação direta com o usuário).
-
-### Segurança — regras invioláveis
-
-1. **Nunca remover ou enfraquecer** o mecanismo de confirmação `"APAGAR TUDO"`.
-2. **Nunca remover** a flag `--dry-run` — ela é a principal proteção do usuário.
-3. **Nunca fazer commit de arquivos `.env`** ou `*.session` — contêm credenciais sensíveis.
-4. **Manter rate-limit handling** — sem ele, a conta do usuário pode ser temporariamente bloqueada pela API do Telegram.
-5. **Preservar delays entre operações** (`safe_sleep`) para reduzir risco de flood.
-
-## Variáveis de ambiente
-
-| Variável       | Obrigatória | Descrição                                    |
-| -------------- | ----------- | -------------------------------------------- |
-| `API_ID`       | Sim         | ID da aplicação Telegram (inteiro)           |
-| `API_HASH`     | Sim         | Hash da aplicação Telegram (string hex)      |
-| `SESSION_NAME` | Não         | Nome do arquivo de sessão (padrão: `session`)|
-
-## Testes
-
-Não há framework de testes configurado. O modo `--dry-run` é o mecanismo atual de verificação segura. Se testes forem adicionados no futuro:
-- Usar `pytest` como framework.
-- Mockar chamadas ao Telethon/Telegram API (nunca fazer chamadas reais em testes).
-- Colocar testes em um diretório `tests/`.
-
-## Dependências
-
-Fixadas por versão exata em `requirements.txt`:
-- **telethon==1.42.0** — Cliente Telegram (MTProto)
-- **python-dotenv==1.2.1** — Carregamento de `.env`
-
-Para adicionar dependências, atualizar `requirements.txt` com versão exata (ex.: `pacote==X.Y.Z`).
+Opções disponíveis:
+- `--dry-run`: Não faz alterações, só mostra o que faria
+- `--yes`: Não pede confirmação interativa
+- `--limit N`: Limita a N diálogos processados (0 = todos)

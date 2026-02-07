@@ -56,7 +56,7 @@ Edite o arquivo `.env` com suas credenciais:
 ```ini
 API_ID=123456
 API_HASH=abc123def456...
-SESSION_NAME=session          # opcional (padrão: session)
+SESSION_NAME=session          # opcional; padrão persiste em ~/.clean_telegram/
 ```
 
 ## Uso
@@ -124,7 +124,7 @@ python clean_telegram.py --yes
 |----------|:-----------:|-----------|
 | `API_ID` | Sim | ID da aplicação Telegram (inteiro) |
 | `API_HASH` | Sim | Hash da aplicação Telegram (string hex) |
-| `SESSION_NAME` | Não | Nome do arquivo de sessão (padrão: `session`) |
+| `SESSION_NAME` | Não | Nome/caminho da sessão. Nome simples usa `~/.clean_telegram/`; caminho absoluto/relativo usa o caminho informado |
 
 ## Como funciona
 
@@ -164,7 +164,7 @@ Na primeira vez que rodar o script, o Telethon solicitará:
 2. **Código de verificação** — recebido no próprio Telegram
 3. **Senha 2FA** — se autenticação em duas etapas estiver ativada
 
-Após o login, um arquivo `session.session` é criado localmente. Nas execuções seguintes, o login é automático.
+Após o login, um arquivo de sessão (ex.: `~/.clean_telegram/session.session`) é criado e reaproveitado nas próximas execuções, evitando pedir telefone/código novamente.
 
 > **Segurança:** O arquivo `*.session` contém credenciais de autenticação.
 > Ele está no `.gitignore` e **nunca** deve ser commitado ou compartilhado.
@@ -219,5 +219,5 @@ Atualmente não. O script processa **todos** os diálogos da conta (ou os primei
 <details>
 <summary><strong>Como deslogar / trocar de conta?</strong></summary>
 
-Delete o arquivo `session.session` (ou o nome configurado em `SESSION_NAME`). Na próxima execução, o Telethon pedirá login novamente.
+Delete o arquivo de sessão usado (por padrão `~/.clean_telegram/session.session`, ou o caminho definido em `SESSION_NAME`). Na próxima execução, o Telethon pedirá login novamente.
 </details>

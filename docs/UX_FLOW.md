@@ -1,6 +1,6 @@
 # Fluxo UX — CleanTelegram
 
-Documento que mapeia a jornada completa do usuário ao interagir com o script `clean_telegram.py`.
+Documento que mapeia a jornada completa do usuário ao interagir com o **CleanTelegram**, um projeto Python moderno para limpeza de contas Telegram via Telethon.
 
 ---
 
@@ -26,20 +26,23 @@ Documento que mapeia a jornada completa do usuário ao interagir com o script `c
 
 ## 2. Fluxo de Setup Inicial (primeira vez)
 
+### 2.1. Setup com UV (recomendado)
+
 ```text
  USUÁRIO                          SISTEMA
  ───────                          ──────
     │
-    │  python -m venv .venv
+    │  uv venv
     │  source .venv/bin/activate
-    │  pip install -r requirements.txt
+    │  uv pip install -e ".[dev]"
     ├──────────────────────────────────▶ Instala telethon + python-dotenv
+    │                                    + ferramentas de dev
     │
     │  cp .env.example .env
     │  (edita .env com API_ID e API_HASH)
     ├──────────────────────────────────▶ Configura credenciais
     │
-    │  python clean_telegram.py --dry-run
+    │  python -m clean_telegram --dry-run
     ├──────────────────────────────────▶ Primeira execução
     │                                    │
     │  ◀── Telethon pede telefone ───────┤
@@ -54,22 +57,66 @@ Documento que mapeia a jornada completa do usuário ao interagir com o script `c
     │  Digita senha 2FA                  │
     ├──────────────────────────────────▶ │
     │                                    │
-    │                                    ├──▶ Salva session.session
+    │                                    ├──▶ Salva ~/.clean_telegram/session.session
     │                                    │
     │  ◀── Dry-run: lista diálogos ──────┤
     │      (nenhuma alteração feita)      │
     ▼                                    ▼
 ```
 
-> **Nota:** Após o primeiro login, o arquivo `session.session` é reutilizado automaticamente. O fluxo de autenticação não se repete.
+### 2.2. Setup com pip tradicional
+
+```bash
+# Criar e ativar virtualenv
+python -m venv .venv
+source .venv/bin/activate
+
+# Instalar dependências
+pip install -e ".[dev]"
+
+# Configurar ambiente
+cp .env.example .env
+# Editar .env com API_ID e API_HASH (https://my.telegram.org)
+
+# Executar
+python -m clean_telegram --dry-run
+```
+
+> **Nota:** Após o primeiro login, o arquivo de sessão (por padrão `~/.clean_telegram/session.session`) é reutilizado automaticamente. O fluxo de autenticação não se repete.
 
 ---
 
-## 3. Fluxo Principal de Execução
+## 3. Estrutura do Projeto
+
+```text
+CleanTelegram/
+├── src/
+│   └── clean_telegram/
+│       ├── __init__.py      # Pacote principal
+│       ├── __main__.py      # Entry-point do CLI
+│       ├── client.py        # Funções de interação com Telegram
+│       └── utils.py         # Funções utilitárias
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py          # Fixtures pytest
+│   ├── test_client.py       # Testes do módulo client
+│   └── test_utils.py        # Testes do módulo utils
+├── docs/
+│   └── UX_FLOW.md           # Este documento
+├── .env.example             # Template de variáveis de ambiente
+├── pyproject.toml           # Configuração do projeto
+├── requirements.txt         # Dependências de produção
+├── requirements-dev.txt     # Dependências de desenvolvimento
+└── README.md                # Documentação do projeto
+```
+
+---
+
+## 4. Fluxo Principal de Execução
 
 ```mermaid
 flowchart TD
-    A[python clean_telegram.py] --> B{Variáveis .env ok?}
+    A[python -m clean_telegram] --> B{Variáveis .env ok?}
     B -- "API_ID ou API_HASH faltando" --> C[/"SystemExit: Faltou ... no .env"/]
     B -- "OK" --> D{Qual modo?}
 
@@ -89,7 +136,7 @@ flowchart TD
     K -- "Sim" --> L["Log: Concluído. Diálogos processados: N"]
     K -- "Não / sem limite" --> M[Próximo diálogo]
 
-    M --> N[_process_dialog]
+    M --> N[process_dialog]
     N --> O{Tipo da entidade}
 
     O -- "Channel" --> P["SAIR de canal/megagrupo\nLeaveChannelRequest"]
@@ -114,11 +161,11 @@ flowchart TD
 
 ---
 
-## 4. Fluxo de Tratamento de Erros (por diálogo)
+## 5. Fluxo de Tratamento de Erros (por diálogo)
 
 ```mermaid
 flowchart TD
-    A[_process_dialog] --> B{Resultado}
+    A[process_dialog] --> B{Resultado}
 
     B -- "Sucesso" --> C["safe_sleep(0.35s)\n→ próximo diálogo"]
 
@@ -144,7 +191,7 @@ flowchart TD
 
 ---
 
-## 5. Fluxo do modo `--dry-run`
+## 6. Fluxo do modo `--dry-run`
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
@@ -168,7 +215,7 @@ flowchart TD
 
 ---
 
-## 6. Mapa de decisões do roteador `_process_dialog`
+## 7. Mapa de decisões do roteador `process_dialog`
 
 ```text
   entity recebida
@@ -201,7 +248,7 @@ flowchart TD
 
 ---
 
-## 7. Tabela de estados do terminal (o que o usuário vê)
+## 8. Tabela de estados do terminal (o que o usuário vê)
 
 | Fase | Saída no terminal | Origem |
 |------|-------------------|--------|
@@ -221,49 +268,63 @@ flowchart TD
 
 ---
 
-## 8. Cenários de uso típicos
+## 9. Cenários de uso típicos
 
-### 8.1 Primeiro uso (cauteloso)
+### 9.1 Primeiro uso (cauteloso)
 
 ```bash
-# 1. Setup
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+# 1. Setup com UV (recomendado)
+uv venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
 cp .env.example .env  # editar com API_ID e API_HASH
 
 # 2. Testar com dry-run
-python clean_telegram.py --dry-run
+python -m clean_telegram --dry-run
 
 # 3. Testar com poucos diálogos
-python clean_telegram.py --dry-run --limit 5
+python -m clean_telegram --dry-run --limit 5
 
 # 4. Executar de verdade (poucos diálogos)
-python clean_telegram.py --limit 5
+python -m clean_telegram --limit 5
 # → Digita "APAGAR TUDO"
 
 # 5. Executar em tudo
-python clean_telegram.py
+python -m clean_telegram
 # → Digita "APAGAR TUDO"
 ```
 
-### 8.2 Uso automatizado (script/cron)
+### 9.2 Uso automatizado (script/cron)
 
 ```bash
-python clean_telegram.py --yes
+python -m clean_telegram --yes
 # Pula confirmação interativa — usar com cuidado!
 ```
 
-### 8.3 Debugging de rate limit
+### 9.3 Debugging de rate limit
 
 ```bash
-python clean_telegram.py --limit 3
+python -m clean_telegram --limit 3
 # Observar logs de FloodWaitError
 # Ajustar --limit conforme necessário
 ```
 
+### 9.4 Executar testes
+
+```bash
+# Executar todos os testes
+pytest
+
+# Executar com cobertura
+pytest --cov=src/clean_telegram --cov-report=html
+
+# Executar teste específico
+pytest tests/test_client.py -v
+```
+
 ---
 
-## 9. Diagrama de ciclo de vida da sessão
+## 10. Diagrama de ciclo de vida da sessão
 
 ```text
   Primeira execução               Execuções seguintes
@@ -297,4 +358,28 @@ python clean_telegram.py --limit 3
              └──────────────┘
 ```
 
-> **Importante:** O arquivo `*.session` contém credenciais de autenticação e **nunca** deve ser commitado no repositório.
+> **Importante:** O arquivo `*.session` contém credenciais de autenticação e **nunca** deve ser commitado no repositório. Ele já está configurado no `.gitignore`.
+
+---
+
+## 11. Comandos de Desenvolvimento
+
+```bash
+# Verificar ajuda
+python -m clean_telegram --help
+
+# Formatar código
+black src/ tests/
+
+# Ordenar imports
+isort src/ tests/
+
+# Executar linting
+flake8 src/ tests/
+
+# Verificar tipos
+mypy src/
+
+# Executar todos os checks de uma vez
+black --check src/ tests/ && isort --check-only src/ tests/ && flake8 src/ tests/ && mypy src/
+```
