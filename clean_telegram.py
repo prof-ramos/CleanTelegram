@@ -14,8 +14,8 @@ from dotenv import load_dotenv
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError, RPCError
 from telethon.tl.functions.channels import LeaveChannelRequest
-from telethon.tl.functions.messages import DeleteHistoryRequest, DeleteChatUserRequest
-from telethon.tl.types import Channel, Chat, User
+from telethon.tl.functions.messages import DeleteChatUserRequest, DeleteHistoryRequest
+from telethon.tl.types import Channel, Chat, InputUserSelf, User
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,44 @@ async def leave_legacy_chat(
         return
 
     # Remove o próprio usuário do chat legado.
-    await client(DeleteChatUserRequest(chat_id=entity.id, user_id="me"))
+    await client(DeleteChatUserRequest(chat_id=entity.id, user_id=InputUserSelf()))
+
+
+async def _process_dialog(
+    client: TelegramClient,
+    entity,
+    title: str,
+    index: int,
+    *,
+    dry_run: bool,
+) -> None:
+    """Processa um único diálogo, escolhendo a ação correta por tipo."""
+    if isinstance(entity, Channel):
+        logger.info("[%s] SAIR de canal/megagrupo: %s", index, title)
+        await leave_channel(client, entity, dry_run=dry_run)
+        return
+
+    if isinstance(entity, Chat):
+        logger.info("[%s] SAIR de grupo legado (Chat): %s", index, title)
+        try:
+            await leave_legacy_chat(client, entity, dry_run=dry_run)
+        except RPCError:
+            logger.warning(
+                "Falha ao sair via DeleteChatUserRequest; tentando fallback delete_dialog: %s",
+                title,
+            )
+            if not dry_run:
+                await client.delete_dialog(entity)
+        return
+
+    if isinstance(entity, User) or getattr(entity, "bot", None) is not None:
+        logger.info("[%s] APAGAR conversa: %s", index, title)
+        await delete_dialog(client, entity, dry_run=dry_run)
+        return
+
+    logger.info("[%s] APAGAR diálogo (tipo desconhecido): %s", index, title)
+    if not dry_run:
+        await client.delete_dialog(entity)
 
 
 async def main() -> None:
@@ -118,48 +155,25 @@ async def main() -> None:
 
         processed = 0
         async for d in client.iter_dialogs():
-            processed += 1
-            if args.limit and processed > args.limit:
+            if args.limit and processed >= args.limit:
                 break
 
             title = d.name or "(sem nome)"
             entity = d.entity
-
-            # Decide qual ação executar para cada tipo.
-            async def do_action() -> None:
-                if isinstance(entity, Channel):
-                    logger.info("[%s] SAIR de canal/megagrupo: %s", processed, title)
-                    await leave_channel(client, entity, dry_run=args.dry_run)
-                    return
-
-                if isinstance(entity, Chat):
-                    logger.info("[%s] SAIR de grupo legado (Chat): %s", processed, title)
-                    try:
-                        await leave_legacy_chat(client, entity, dry_run=args.dry_run)
-                    except RPCError:
-                        # Fallback: em alguns casos o Telegram/Telethon pode recusar.
-                        # delete_dialog normalmente remove o diálogo/local; não garante "sair".
-                        logger.warning(
-                            "Falha ao sair via DeleteChatUserRequest; tentando fallback delete_dialog: %s",
-                            title,
-                        )
-                        await client.delete_dialog(entity) if not args.dry_run else None
-                    return
-
-                if isinstance(entity, User) or getattr(entity, "bot", None) is not None:
-                    logger.info("[%s] APAGAR conversa: %s", processed, title)
-                    await delete_dialog(client, entity, dry_run=args.dry_run)
-                    return
-
-                logger.info("[%s] APAGAR diálogo (tipo desconhecido): %s", processed, title)
-                await client.delete_dialog(entity) if not args.dry_run else None
+            index = processed + 1
 
             # FloodWait retry (não pular o diálogo)
             max_retries = 5
             attempt = 0
             while True:
                 try:
-                    await do_action()
+                    await _process_dialog(
+                        client,
+                        entity,
+                        title,
+                        index,
+                        dry_run=args.dry_run,
+                    )
                     await safe_sleep(0.35)
                     break
 
@@ -178,13 +192,15 @@ async def main() -> None:
                         logger.error("Max retries atingido; pulando '%s'.", title)
                         break
 
-                except RPCError as e:
-                    logger.error("RPCError em '%s': %s: %s", title, e.__class__.__name__, e)
+                except RPCError:
+                    logger.exception("RPCError em '%s'", title)
                     break
 
                 except Exception:
                     logger.exception("Erro inesperado em '%s'", title)
                     break
+
+            processed += 1
 
         logger.info("Concluído. Diálogos processados: %s", processed)
 
