@@ -1,5 +1,7 @@
 # CleanTelegram
 
+**Tags:** telegram, telethon, python, cleanup, automation, privacy, destructive
+
 **Atenção:** este projeto automatiza ações destrutivas na sua conta Telegram (apagar conversas e sair de grupos/canais). Use **por sua conta e risco**. Recomendo testar primeiro com `--dry-run`.
 
 ## O que faz
