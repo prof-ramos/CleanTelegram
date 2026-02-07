@@ -10,7 +10,7 @@ Este é um projeto **destrutivo por design** — qualquer alteração deve prese
 
 ## Estrutura do repositório
 
-```
+```text
 CleanTelegram/
 ├── clean_telegram.py      # Script principal (ponto de entrada único)
 ├── requirements.txt       # Dependências Python (telethon, python-dotenv)

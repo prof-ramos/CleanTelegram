@@ -6,7 +6,7 @@ Documento que mapeia a jornada completa do usuário ao interagir com o script `c
 
 ## 1. Visão geral dos fluxos
 
-```
+```text
 ┌─────────────────────────────────────────────────────┐
 │                  JORNADA DO USUÁRIO                  │
 │                                                     │
@@ -26,7 +26,7 @@ Documento que mapeia a jornada completa do usuário ao interagir com o script `c
 
 ## 2. Fluxo de Setup Inicial (primeira vez)
 
-```
+```text
  USUÁRIO                          SISTEMA
  ───────                          ──────
     │
@@ -146,7 +146,7 @@ flowchart TD
 
 ## 5. Fluxo do modo `--dry-run`
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    MODO DRY-RUN                         │
 │                                                         │
@@ -170,7 +170,7 @@ flowchart TD
 
 ## 6. Mapa de decisões do roteador `_process_dialog`
 
-```
+```text
   entity recebida
         │
         ▼
@@ -224,6 +224,7 @@ flowchart TD
 ## 8. Cenários de uso típicos
 
 ### 8.1 Primeiro uso (cauteloso)
+
 ```bash
 # 1. Setup
 python -m venv .venv && source .venv/bin/activate
@@ -246,12 +247,14 @@ python clean_telegram.py
 ```
 
 ### 8.2 Uso automatizado (script/cron)
+
 ```bash
 python clean_telegram.py --yes
 # Pula confirmação interativa — usar com cuidado!
 ```
 
 ### 8.3 Debugging de rate limit
+
 ```bash
 python clean_telegram.py --limit 3
 # Observar logs de FloodWaitError
@@ -262,7 +265,7 @@ python clean_telegram.py --limit 3
 
 ## 9. Diagrama de ciclo de vida da sessão
 
-```
+```text
   Primeira execução               Execuções seguintes
   ──────────────────              ───────────────────
         │                               │
