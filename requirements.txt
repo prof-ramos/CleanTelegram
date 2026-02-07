@@ -1,2 +1,4 @@
-telethon==1.42.0
-python-dotenv==1.2.1
+# Dependências de produção
+telethon>=1.42.0,<2.0.0
+python-dotenv>=1.0.0,<2.0.0
+qrcode>=8.0,<9.0
