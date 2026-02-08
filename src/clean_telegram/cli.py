@@ -139,6 +139,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Envia arquivos de backup para Cloud Chat (Saved Messages).",
     )
+    parser.add_argument(
+        "--max-concurrent-downloads",
+        type=int,
+        default=5,
+        help="Máximo de downloads paralelos (padrão: 5).",
+    )
 
     return parser.parse_args()
 
@@ -328,6 +334,7 @@ async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
                 download_media=True,
                 media_types=media_types,
                 send_to_cloud=args.backup_to_cloud,
+                max_concurrent_downloads=args.max_concurrent_downloads,
             )
         else:
             logger.info(f"Fazendo backup completo no formato '{output_format}'...")
@@ -336,6 +343,7 @@ async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
                 client, entity, output_dir, output_format,
                 download_media=False,
                 send_to_cloud=args.backup_to_cloud,
+                max_concurrent_downloads=args.max_concurrent_downloads,
             )
 
         logger.info(f"Backup concluído:")

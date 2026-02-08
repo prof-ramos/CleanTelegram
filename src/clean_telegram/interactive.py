@@ -7,7 +7,6 @@ semelhante a ferramentas como Claude Code e Mole.
 import logging
 
 import questionary
-
 from telethon import TelegramClient
 
 from .backup import backup_group_with_media
@@ -17,6 +16,13 @@ from .reports import (
     generate_contacts_report,
     generate_groups_channels_report,
 )
+from .ui import (
+    console,
+    print_stats_table,
+    print_tip,
+    spinner,
+    suppress_telethon_logs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +31,12 @@ logger = logging.getLogger(__name__)
 CUSTOM_STYLE = questionary.Style(
     [
         ("qmark", "fg:#67b7a1 bold"),  # Cor do marcador "?"
-        ("question", "bold"),           # Pergunta em negrito
-        ("selected", "fg:#cc5454"),     # Opção selecionada
-        ("pointer", "fg:#67b7a1 bold"), # Ponteiro "> "
+        ("question", "bold"),  # Pergunta em negrito
+        ("selected", "fg:#cc5454"),  # Opção selecionada
+        ("pointer", "fg:#67b7a1 bold"),  # Ponteiro "> "
         ("highlighted", "fg:#67b7a1 bold"),  # Opção destacada
         ("answer", "fg:#f6b93b bold"),  # Resposta
-        ("separator", "fg:#6e6e6e"),    # Separador
+        ("separator", "fg:#6e6e6e"),  # Separador
     ]
 )
 
@@ -41,19 +47,36 @@ async def interactive_main(client: TelegramClient) -> None:
         me = await client.get_me()
         username = me.username or me.first_name
 
-        # Menu principal
-        action = await questionary.select(
-            f"🚀 CleanTelegram - Logado como: {username} (id={me.id})\n"
-            "O que você deseja fazer?",
-            choices=[
-                questionary.Choice("🧹 Limpar conta", value="clean", description="Apaga conversas e sai de grupos/canais"),
-                questionary.Choice("📊 Gerar relatórios", value="reports", description="Exporta grupos, canais e contatos"),
-                questionary.Choice("📦 Backup de grupo", value="backup", description="Faz backup de mensagens e participantes"),
-                questionary.Choice("⚙️  Ver estatísticas", value="stats", description="Mostra informações da conta"),
-                questionary.Choice("🚪 Sair", value="exit"),
-            ],
-            style=CUSTOM_STYLE,
-        ).ask_async()
+        # Menu principal (suprimindo logs do Telethon durante interação)
+        with suppress_telethon_logs():
+            action = await questionary.select(
+                f"🚀 CleanTelegram - Logado como: {username} (id={me.id})\n"
+                "O que você deseja fazer?",
+                choices=[
+                    questionary.Choice(
+                        "🧹 Limpar conta",
+                        value="clean",
+                        description="Apaga conversas e sai de grupos/canais",
+                    ),
+                    questionary.Choice(
+                        "📊 Gerar relatórios",
+                        value="reports",
+                        description="Exporta grupos, canais e contatos",
+                    ),
+                    questionary.Choice(
+                        "📦 Backup de grupo",
+                        value="backup",
+                        description="Faz backup de mensagens e participantes",
+                    ),
+                    questionary.Choice(
+                        "⚙️  Ver estatísticas",
+                        value="stats",
+                        description="Mostra informações da conta",
+                    ),
+                    questionary.Choice("🚪 Sair", value="exit"),
+                ],
+                style=CUSTOM_STYLE,
+            ).ask_async()
 
         if action == "exit":
             print("\n👋 Até logo!")
@@ -69,7 +92,9 @@ async def interactive_main(client: TelegramClient) -> None:
 
         # Pausa antes de voltar ao menu (apenas se não saiu)
         if action != "exit":
-            await questionary.press_any_key_to_continue("\nPressione qualquer tecla para continuar...").ask_async()
+            await questionary.press_any_key_to_continue(
+                "\nPressione qualquer tecla para continuar..."
+            ).ask_async()
 
 
 async def interactive_clean(client: TelegramClient) -> None:
@@ -222,45 +247,55 @@ async def interactive_stats(client: TelegramClient) -> None:
     """Mostra estatísticas da conta."""
     me = await client.get_me()
 
-    print("\n📊 Estatísticas da Conta")
-    print("=" * 40)
-    print(f"👤 Nome: {me.first_name} {me.last_name or ''}".strip())
-    print(f"📱 Username: @{me.username}" if me.username else "📱 Username: (não definido)")
-    print(f"🆔 ID: {me.id}")
-    print(f"✅ Verificado: {'Sim' if getattr(me, 'verified', False) else 'Não'}")
-    print(f"🤖 Bot: {'Sim' if getattr(me, 'bot', False) else 'Não'}")
+    # Estatísticas do usuário com tabela Rich
+    console.print()
+    print_stats_table(
+        "📊 Estatísticas da Conta",
+        {
+            "👤 Nome": f"{me.first_name} {me.last_name or ''}".strip(),
+            "📱 Username": f"@{me.username}" if me.username else "(não definido)",
+            "🆔 ID": me.id,
+            "✅ Verificado": "Sim" if getattr(me, "verified", False) else "Não",
+            "🤖 Bot": "Sim" if getattr(me, "bot", False) else "Não",
+        },
+    )
 
-    # Contar diálogos
-    print("\n⏳ Contando diálogos...")
-
+    # Contar diálogos com spinner animado
     dialogs_count = 0
     groups_count = 0
     users_count = 0
     channels_count = 0
 
-    async for dialog in client.iter_dialogs():
-        dialogs_count += 1
-        entity = dialog.entity
+    with spinner("⏳ Contando diálogos..."):
+        async for dialog in client.iter_dialogs():
+            dialogs_count += 1
+            entity = dialog.entity
 
-        # Verificar tipo usando duck-typing
-        if hasattr(entity, "megagroup"):
-            if getattr(entity, "broadcast", False):
-                channels_count += 1
-            else:
+            # Verificar tipo usando duck-typing
+            if hasattr(entity, "megagroup"):
+                if getattr(entity, "broadcast", False):
+                    channels_count += 1
+                else:
+                    groups_count += 1
+            elif hasattr(entity, "participants_count"):
+                # Chat legado
                 groups_count += 1
-        elif hasattr(entity, "participants_count"):
-            # Chat legado
-            groups_count += 1
-        elif hasattr(entity, "first_name") or hasattr(entity, "bot"):
-            users_count += 1
+            elif hasattr(entity, "first_name") or hasattr(entity, "bot"):
+                users_count += 1
 
-    print("\n📁 Diálogos:")
-    print(f"   • Total: {dialogs_count}")
-    print(f"   • Grupos: {groups_count}")
-    print(f"   • Canais: {channels_count}")
-    print(f"   • Contatos: {users_count}")
+    # Exibir contagem com tabela colorida
+    console.print()
+    print_stats_table(
+        "📁 Diálogos",
+        {
+            "Total": dialogs_count,
+            "Grupos": groups_count,
+            "Canais": channels_count,
+            "Contatos": users_count,
+        },
+    )
 
-    print("\n💡 Dica: Use 'Gerar relatórios' para exportar esses dados.")
+    print_tip("Use 'Gerar relatórios' para exportar esses dados.")
 
 
 async def interactive_backup(client: TelegramClient) -> None:
@@ -282,7 +317,7 @@ async def interactive_backup(client: TelegramClient) -> None:
         print(f"\n❌ Erro ao encontrar chat '{chat_id}': {e}")
         return
 
-    chat_title = getattr(entity, 'title', str(entity.id))
+    chat_title = getattr(entity, "title", str(entity.id))
     print(f"\n📁 Grupo encontrado: {chat_title}")
 
     # Perguntar formato
@@ -324,19 +359,33 @@ async def interactive_backup(client: TelegramClient) -> None:
 
         if media_choice == "custom":
             media_types = []
-            if await questionary.confirm("📷 Fotos?", default=False, style=CUSTOM_STYLE).ask_async():
+            if await questionary.confirm(
+                "📷 Fotos?", default=False, style=CUSTOM_STYLE
+            ).ask_async():
                 media_types.append("photo")
-            if await questionary.confirm("🎥 Vídeos?", default=False, style=CUSTOM_STYLE).ask_async():
+            if await questionary.confirm(
+                "🎥 Vídeos?", default=False, style=CUSTOM_STYLE
+            ).ask_async():
                 media_types.append("video")
-            if await questionary.confirm("📄 Documentos?", default=False, style=CUSTOM_STYLE).ask_async():
+            if await questionary.confirm(
+                "📄 Documentos?", default=False, style=CUSTOM_STYLE
+            ).ask_async():
                 media_types.append("document")
-            if await questionary.confirm("🎵 Áudio?", default=False, style=CUSTOM_STYLE).ask_async():
+            if await questionary.confirm(
+                "🎵 Áudio?", default=False, style=CUSTOM_STYLE
+            ).ask_async():
                 media_types.append("audio")
-            if await questionary.confirm("🎤 Voice notes?", default=False, style=CUSTOM_STYLE).ask_async():
+            if await questionary.confirm(
+                "🎤 Voice notes?", default=False, style=CUSTOM_STYLE
+            ).ask_async():
                 media_types.append("voice")
-            if await questionary.confirm("😄 Stickers?", default=False, style=CUSTOM_STYLE).ask_async():
+            if await questionary.confirm(
+                "😄 Stickers?", default=False, style=CUSTOM_STYLE
+            ).ask_async():
                 media_types.append("sticker")
-            if await questionary.confirm("🎞️ GIFs?", default=False, style=CUSTOM_STYLE).ask_async():
+            if await questionary.confirm(
+                "🎞️ GIFs?", default=False, style=CUSTOM_STYLE
+            ).ask_async():
                 media_types.append("gif")
 
             if not media_types:
@@ -358,9 +407,11 @@ async def interactive_backup(client: TelegramClient) -> None:
     print(f"   • Grupo: {chat_title}")
     print(f"   • Formato: {output_format}")
     if download_media:
-        print(f"   • Mídia: Sim ({'todos os tipos' if not media_types else ', '.join(media_types)})")
+        print(
+            f"   • Mídia: Sim ({'todos os tipos' if not media_types else ', '.join(media_types)})"
+        )
     else:
-        print(f"   • Mídia: Não")
+        print("   • Mídia: Não")
     print(f"   • Cloud Chat: {'Sim' if send_to_cloud else 'Não'}")
 
     confirm = await questionary.confirm(
@@ -374,7 +425,7 @@ async def interactive_backup(client: TelegramClient) -> None:
         return
 
     # Executar backup
-    print(f"\n📦 Iniciando backup...")
+    print("\n📦 Iniciando backup...")
 
     try:
         results = await backup_group_with_media(
@@ -393,15 +444,17 @@ async def interactive_backup(client: TelegramClient) -> None:
 
         if "media" in results:
             print(f"   • Arquivos de mídia: {results['media']['total']} baixados")
-            for media_type, count in results['media'].items():
-                if media_type != 'total' and count > 0:
+            for media_type, count in results["media"].items():
+                if media_type != "total" and count > 0:
                     print(f"     - {media_type}: {count}")
 
         if "cloud_backup" in results and results["cloud_backup"]:
-            print(f"   • ☁️ Cloud Chat: {len(results.get('cloud_files', []))} arquivo(s) enviado(s) para Saved Messages")
+            print(
+                f"   • ☁️ Cloud Chat: {len(results.get('cloud_files', []))} arquivo(s) enviado(s) para Saved Messages"
+            )
 
         if "messages_json" in results:
-            print(f"\n📁 Arquivos salvos:")
+            print("\n📁 Arquivos salvos:")
             if "messages_json" in results:
                 print(f"   • Mensagens: {results['messages_json']}")
             if "participants_json" in results:

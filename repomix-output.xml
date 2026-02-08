@@ -1,0 +1,4072 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/
+  clean_telegram/
+    __init__.py
+    __main__.py
+    backup.py
+    cleaner.py
+    cli.py
+    interactive.py
+    reports.py
+tests/
+  __init__.py
+  conftest.py
+  test_backup_cloud.py
+  test_cli_auth.py
+  test_interactive_backup.py
+  test_reports.py
+.env.example
+.gitignore
+pyproject.toml
+README.md
+requirements.txt
+run_clean_telegram.py
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/clean_telegram/__init__.py">
+"""CleanTelegram: script para limpar conta Telegram via Telethon.
+
+Este pacote fornece funcionalidades para:
+- Apagar históricos de conversa
+- Sair de grupos/canais
+- Gerar relatórios de grupos, canais e contatos
+"""
+
+__version__ = "1.1.0"
+</file>
+
+<file path="src/clean_telegram/__main__.py">
+"""Entry point para execução como módulo Python.
+
+Usage:
+    python -m clean_telegram --help
+    python -m clean_telegram --report all
+"""
+
+import asyncio
+
+from .cli import main as _main_async
+
+
+def main() -> None:
+    """Entry point síncrono para entry points de console."""
+    asyncio.run(_main_async())
+
+
+if __name__ == "__main__":
+    main()
+</file>
+
+<file path="src/clean_telegram/backup.py">
+"""Módulo de backup e exportação de dados do Telegram.
+
+Exporta mensagens e participantes de grupos para JSON/CSV.
+"""
+
+import csv
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from telethon import TelegramClient
+from telethon.tl.types import User
+
+logger = logging.getLogger(__name__)
+
+
+def _get_timestamp() -> str:
+    """Retorna timestamp atual formatado para nomes de arquivo."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def _safe_getattr(obj: Any, attr: str, default: Any = None) -> Any:
+    """getattr seguro que retorna default se AttributeError ocorrer."""
+    try:
+        return getattr(obj, attr, default)
+    except (AttributeError, TypeError):
+        return default
+
+
+async def export_messages_to_json(
+    client: TelegramClient,
+    chat_entity,
+    output_path: str,
+) -> int:
+    """Exporta todas as mensagens de um chat para JSON.
+
+    Args:
+        client: Cliente Telethon conectado.
+        chat_entity: Entidade do chat (grupo/canal).
+        output_path: Caminho do arquivo JSON de saída.
+
+    Returns:
+        Número de mensagens exportadas.
+    """
+    messages_data = []
+
+    async for message in client.iter_messages(chat_entity):
+        msg_data: dict[str, Any] = {
+            "id": message.id,
+            "date": message.date.isoformat() if message.date else None,
+            "text": message.text,
+            "sender_id": message.sender_id,
+            "reply_to_msg_id": _safe_getattr(message.reply_to, 'reply_to_msg_id') if message.reply_to else None,
+            "has_media": bool(message.media),
+        }
+
+        # Adicionar informações do remetente se disponível
+        if message.sender:
+            msg_data["sender"] = {
+                "id": message.sender.id,
+                "username": _safe_getattr(message.sender, 'username'),
+                "first_name": _safe_getattr(message.sender, 'first_name'),
+                "last_name": _safe_getattr(message.sender, 'last_name'),
+            }
+
+        # Adicionar informações de mídia
+        if message.media:
+            msg_data["media_type"] = type(message.media).__name__
+
+        messages_data.append(msg_data)
+
+    # Salvar JSON
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump({
+            "export_date": datetime.now().isoformat(),
+            "chat_id": chat_entity.id,
+            "chat_title": _safe_getattr(chat_entity, 'title'),
+            "total_messages": len(messages_data),
+            "messages": messages_data,
+        }, f, ensure_ascii=False, indent=2)
+
+    return len(messages_data)
+
+
+async def export_messages_to_csv(
+    client: TelegramClient,
+    chat_entity,
+    output_path: str,
+) -> int:
+    """Exporta todas as mensagens de um chat para CSV.
+
+    Args:
+        client: Cliente Telethon conectado.
+        chat_entity: Entidade do chat (grupo/canal).
+        output_path: Caminho do arquivo CSV de saída.
+
+    Returns:
+        Número de mensagens exportadas.
+    """
+    count = 0
+
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "ID", "Data", "Remetente ID", "Nome", "Username",
+            "Texto", "Tipo Mídia", "Reply To"
+        ])
+
+        async for message in client.iter_messages(chat_entity):
+            sender_name = ""
+            sender_username = ""
+            if message.sender:
+                first_name = _safe_getattr(message.sender, 'first_name', '')
+                last_name = _safe_getattr(message.sender, 'last_name', '')
+                sender_name = f"{first_name} {last_name}".strip()
+                sender_username = _safe_getattr(message.sender, 'username', '')
+
+            media_type = type(message.media).__name__ if message.media else ""
+            reply_to = _safe_getattr(message.reply_to, 'reply_to_msg_id') if message.reply_to else ""
+
+            writer.writerow([
+                message.id,
+                message.date.isoformat() if message.date else "",
+                message.sender_id,
+                sender_name,
+                sender_username,
+                message.text or "",
+                media_type,
+                reply_to,
+            ])
+            count += 1
+
+    return count
+
+
+async def export_participants_to_json(
+    client: TelegramClient,
+    chat_entity,
+    output_path: str,
+) -> int:
+    """Exporta todos os participantes de um grupo para JSON.
+
+    Args:
+        client: Cliente Telethon conectado.
+        chat_entity: Entidade do chat (grupo/canal).
+        output_path: Caminho do arquivo JSON de saída.
+
+    Returns:
+        Número de participantes exportados.
+    """
+    participants_data = []
+
+    async for participant in client.iter_participants(chat_entity):
+        user = participant.user if hasattr(participant, 'user') else participant
+
+        user_data: dict[str, Any] = {
+            "id": user.id,
+            "first_name": _safe_getattr(user, 'first_name'),
+            "last_name": _safe_getattr(user, 'last_name'),
+            "username": _safe_getattr(user, 'username'),
+            "is_bot": _safe_getattr(user, 'bot', False),
+            "is_verified": _safe_getattr(user, 'verified', False),
+            "is_premium": _safe_getattr(user, 'premium', False),
+            "phone": _safe_getattr(user, 'phone'),
+        }
+
+        # Adicionar informações do participante
+        if hasattr(participant, 'participant'):
+            p = participant.participant
+            user_data["joined_date"] = _safe_getattr(p, 'date')
+            if user_data["joined_date"]:
+                user_data["joined_date"] = user_data["joined_date"].isoformat()
+            user_data["inviter_id"] = _safe_getattr(p, 'inviter_id')
+            user_data["admin_rank"] = _safe_getattr(p, 'admin_rank')
+
+        # Status online (para User)
+        if isinstance(user, User):
+            status = _safe_getattr(user, 'status')
+            if status:
+                if hasattr(status, 'was_online') and status.was_online:
+                    user_data["last_online"] = status.was_online.isoformat()
+                elif hasattr(status, 'expires'):
+                    user_data["online"] = True
+
+        participants_data.append(user_data)
+
+    # Salvar JSON
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump({
+            "export_date": datetime.now().isoformat(),
+            "chat_id": chat_entity.id,
+            "chat_title": _safe_getattr(chat_entity, 'title'),
+            "total_participants": len(participants_data),
+            "participants": participants_data,
+        }, f, ensure_ascii=False, indent=2)
+
+    return len(participants_data)
+
+
+async def export_participants_to_csv(
+    client: TelegramClient,
+    chat_entity,
+    output_path: str,
+) -> int:
+    """Exporta todos os participantes de um grupo para CSV.
+
+    Args:
+        client: Cliente Telethon conectado.
+        chat_entity: Entidade do chat (grupo/canal).
+        output_path: Caminho do arquivo CSV de saída.
+
+    Returns:
+        Número de participantes exportados.
+    """
+    count = 0
+
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "ID", "Nome", "Username", "Bot", "Verificado", "Premium",
+            "Telefone", "Data Entrada", "ID Quem Convidou", "Admin Rank"
+        ])
+
+        async for participant in client.iter_participants(chat_entity):
+            user = participant.user if hasattr(participant, 'user') else participant
+
+            first_name = _safe_getattr(user, 'first_name', '')
+            last_name = _safe_getattr(user, 'last_name', '')
+            full_name = f"{first_name} {last_name}".strip()
+
+            joined_date = None
+            inviter_id = None
+            admin_rank = None
+
+            if hasattr(participant, 'participant'):
+                p = participant.participant
+                joined_date = _safe_getattr(p, 'date')
+                inviter_id = _safe_getattr(p, 'inviter_id')
+                admin_rank = _safe_getattr(p, 'admin_rank')
+
+            writer.writerow([
+                user.id,
+                full_name,
+                _safe_getattr(user, 'username', '') or "",
+                "Sim" if _safe_getattr(user, 'bot', False) else "Não",
+                "Sim" if _safe_getattr(user, 'verified', False) else "Não",
+                "Sim" if _safe_getattr(user, 'premium', False) else "Não",
+                _safe_getattr(user, 'phone', '') or "",
+                joined_date.isoformat() if joined_date else "",
+                inviter_id or "",
+                admin_rank or "",
+            ])
+            count += 1
+
+    return count
+
+
+async def backup_group_full(
+    client: TelegramClient,
+    chat_entity,
+    output_dir: str,
+    formats: str = "json",
+) -> dict[str, Any]:
+    """Faz backup completo de um grupo (mensagens + participantes).
+
+    Args:
+        client: Cliente Telethon conectado.
+        chat_entity: Entidade do chat (grupo/canal).
+        output_dir: Diretório de saída para os arquivos.
+        formats: Formato dos arquivos ('json', 'csv' ou 'both').
+
+    Returns:
+        Dicionário com informações do backup realizado.
+    """
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    timestamp = _get_timestamp()
+    chat_title = _safe_getattr(chat_entity, 'title', str(chat_entity.id))
+    safe_name = "".join(c for c in chat_title if c.isalnum() or c in (' ', '-', '_')).strip()
+    safe_name = safe_name[:50]  # Limitar tamanho do nome
+
+    results: dict[str, Any] = {
+        "chat_id": chat_entity.id,
+        "chat_title": chat_title,
+        "backup_date": datetime.now().isoformat(),
+    }
+
+    # Exportar mensagens
+    if formats in ("json", "both"):
+        messages_json = f"{output_dir}/{safe_name}_messages_{timestamp}.json"
+        msg_count = await export_messages_to_json(client, chat_entity, messages_json)
+        results["messages_json"] = messages_json
+        results["messages_count"] = msg_count
+
+    if formats in ("csv", "both"):
+        messages_csv = f"{output_dir}/{safe_name}_messages_{timestamp}.csv"
+        msg_count = await export_messages_to_csv(client, chat_entity, messages_csv)
+        results["messages_csv"] = messages_csv
+        results["messages_count"] = msg_count
+
+    # Exportar participantes
+    if formats in ("json", "both"):
+        participants_json = f"{output_dir}/{safe_name}_participants_{timestamp}.json"
+        part_count = await export_participants_to_json(client, chat_entity, participants_json)
+        results["participants_json"] = participants_json
+        results["participants_count"] = part_count
+
+    if formats in ("csv", "both"):
+        participants_csv = f"{output_dir}/{safe_name}_participants_{timestamp}.csv"
+        part_count = await export_participants_to_csv(client, chat_entity, participants_csv)
+        results["participants_csv"] = participants_csv
+        results["participants_count"] = part_count
+
+    return results
+
+
+async def download_media_from_chat(
+    client: TelegramClient,
+    chat_entity,
+    output_dir: str,
+    limit: int = 0,
+    media_types: list[str] | None = None,
+) -> dict[str, int]:
+    """Baixa todos os arquivos de mídia de um chat.
+
+    Args:
+        client: Cliente Telethon conectado.
+        chat_entity: Entidade do chat (grupo/canal).
+        output_dir: Diretório de saída para os arquivos.
+        limit: Limite de mensagens para processar (0 = todas).
+        media_types: Lista de tipos de mídia para baixar.
+                       Se None, baixa todos. Valores: 'photo', 'video', 'document',
+                       'audio', 'voice', 'sticker', 'gif'.
+
+    Returns:
+        Dicionário com contagem de arquivos baixados por tipo.
+    """
+    from telethon.tl.types import (
+        MessageMediaDocument,
+        MessageMediaPhoto,
+        MessageMediaSticker,
+        MessageMediaVideo,
+        MessageMediaAudio,
+        MessageMediaGeoLive,
+    )
+
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    media_dir = Path(output_dir) / "media"
+    media_dir.mkdir(exist_ok=True)
+
+    counts: dict[str, int] = {
+        "photo": 0,
+        "video": 0,
+        "document": 0,
+        "audio": 0,
+        "voice": 0,
+        "sticker": 0,
+        "gif": 0,
+        "other": 0,
+        "total": 0,
+    }
+
+    async def _progress_callback(received: int, total: int) -> None:
+        """Callback de progresso do download."""
+        percent = (received / total) * 100 if total > 0 else 0
+        if received == 0:  # Primeira chamada
+            print(f"  Baixando: {total / 1024 / 1024:.1f} MB...")
+
+    async for message in client.iter_messages(chat_entity, limit=limit):
+        if not message.media:
+            continue
+
+        media_type = "other"
+        should_download = media_types is None  # Baixar tudo se não especificado
+
+        if isinstance(message.media, MessageMediaPhoto):
+            media_type = "photo"
+            ext = ".jpg"
+        elif isinstance(message.media, (MessageMediaVideo, MessageMediaGeoLive)):
+            media_type = "video"
+            ext = ".mp4"
+        elif isinstance(message.media, MessageMediaDocument):
+            doc = message.media.document
+            media_type = "document"
+            # Tentar determinar extensão pelo nome do arquivo
+            if hasattr(doc, "attributes"):
+                for attr in doc.attributes:
+                    if hasattr(attr, "file_name"):
+                        name = attr.file_name
+                        if "." in name:
+                            ext = "." + name.rsplit(".", 1)[-1]
+                        else:
+                            ext = ""
+                        break
+            if ext == "":
+                ext = ".bin"  # Fallback
+        elif isinstance(message.media, MessageMediaAudio):
+            media_type = "audio"
+            ext = ".mp3"
+        elif isinstance(message.media, MessageMediaVoice):
+            media_type = "voice"
+            ext = ".ogg"
+        elif isinstance(message.media, MessageMediaSticker):
+            media_type = "sticker"
+            ext = ".webp"
+        else:
+            # Verificar se é GIF
+            if hasattr(message.media, "document"):
+                if hasattr(message.media.document, "mime_type"):
+                    if message.media.document.mime_type == "video/mp4":
+                        media_type = "gif"
+                        ext = ".mp4"
+
+        # Filtrar por tipo se especificado
+        if media_types is not None:
+            should_download = media_type in media_types
+
+        if should_download:
+            counts[media_type] += 1
+            counts["total"] += 1
+
+            # Gerar nome do arquivo
+            timestamp = _get_timestamp()
+            sender_id = message.sender_id or "unknown"
+            filename = f"{timestamp}_{sender_id}_{message.id}{ext}"
+
+            # Criar subdiretório para o tipo de mídia
+            type_dir = media_dir / media_type
+            type_dir.mkdir(exist_ok=True)
+
+            file_path = type_dir / filename
+
+            try:
+                path = await client.download_media(
+                    message,
+                    file=str(file_path),
+                    progress_callback=_progress_callback,
+                )
+                logger.debug(f"Mídia baixada: {path}")
+            except Exception as e:
+                logger.warning(f"Erro ao baixar mídia da mensagem {message.id}: {e}")
+
+    return counts
+
+
+async def send_backup_to_cloud(
+    client: TelegramClient,
+    file_path: str,
+    caption: str,
+) -> Any:
+    """Envia um arquivo de backup para o Cloud Chat (Saved Messages).
+
+    O Cloud Chat do Telegram é acessível usando 'me' como entidade,
+    e funciona como armazenamento em nuvem pessoal.
+
+    Args:
+        client: Cliente Telethon conectado.
+        file_path: Caminho do arquivo para enviar.
+        caption: Descrição do arquivo (usa emojis para organização).
+
+    Returns:
+        Mensagem enviada para o Cloud Chat.
+    """
+    logger.info(f"Enviando arquivo para Cloud Chat: {file_path}")
+    return await client.send_file('me', file_path, caption=caption)
+
+
+async def backup_group_with_media(
+    client: TelegramClient,
+    chat_entity,
+    output_dir: str,
+    formats: str = "json",
+    download_media: bool = False,
+    media_types: list[str] | None = None,
+    send_to_cloud: bool = False,
+) -> dict[str, Any]:
+    """Faz backup completo de um grupo incluindo mídia.
+
+    Args:
+        client: Cliente Telethon conectado.
+        chat_entity: Entidade do chat (grupo/canal).
+        output_dir: Diretório de saída para os arquivos.
+        formats: Formato dos arquivos ('json', 'csv' ou 'both').
+        download_media: Se True, baixa arquivos de mídia.
+        media_types: Tipos de mídia para baixar. Se None, baixa todos.
+        send_to_cloud: Se True, envia arquivos para Cloud Chat (Saved Messages).
+
+    Returns:
+        Dicionário com informações do backup realizado.
+    """
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    timestamp = _get_timestamp()
+    chat_title = _safe_getattr(chat_entity, 'title', str(chat_entity.id))
+    safe_name = "".join(c for c in chat_title if c.isalnum() or c in (' ', '-', '_')).strip()
+    safe_name = safe_name[:50]  # Limitar tamanho do nome
+
+    results: dict[str, Any] = {
+        "chat_id": chat_entity.id,
+        "chat_title": chat_title,
+        "backup_date": datetime.now().isoformat(),
+    }
+
+    # Exportar mensagens
+    if formats in ("json", "both"):
+        messages_json = f"{output_dir}/{safe_name}_messages_{timestamp}.json"
+        msg_count = await export_messages_to_json(client, chat_entity, messages_json)
+        results["messages_json"] = messages_json
+        results["messages_count"] = msg_count
+
+    if formats in ("csv", "both"):
+        messages_csv = f"{output_dir}/{safe_name}_messages_{timestamp}.csv"
+        msg_count = await export_messages_to_csv(client, chat_entity, messages_csv)
+        results["messages_csv"] = messages_csv
+        results["messages_count"] = msg_count
+
+    # Exportar participantes
+    if formats in ("json", "both"):
+        participants_json = f"{output_dir}/{safe_name}_participants_{timestamp}.json"
+        part_count = await export_participants_to_json(client, chat_entity, participants_json)
+        results["participants_json"] = participants_json
+        results["participants_count"] = part_count
+
+    if formats in ("csv", "both"):
+        participants_csv = f"{output_dir}/{safe_name}_participants_{timestamp}.csv"
+        part_count = await export_participants_to_csv(client, chat_entity, participants_csv)
+        results["participants_csv"] = participants_csv
+        results["participants_count"] = part_count
+
+    # Baixar mídia
+    if download_media:
+        logger.info("Baixando arquivos de mídia...")
+        media_counts = await download_media_from_chat(
+            client,
+            chat_entity,
+            output_dir,
+            media_types=media_types,
+        )
+        results["media"] = media_counts
+
+    # Enviar para Cloud Chat
+    if send_to_cloud:
+        logger.info("Enviando backup para Cloud Chat (Saved Messages)...")
+        cloud_files = []
+
+        # Enviar mensagens JSON
+        if "messages_json" in results and Path(results["messages_json"]).exists():
+            msg_count = results.get("messages_count", 0)
+            caption = f"📦 Backup: {chat_title} - Mensagens ({msg_count} msgs)"
+            await send_backup_to_cloud(client, results["messages_json"], caption)
+            cloud_files.append("messages_json")
+
+        # Enviar mensagens CSV
+        if "messages_csv" in results and Path(results["messages_csv"]).exists():
+            msg_count = results.get("messages_count", 0)
+            caption = f"📦 Backup: {chat_title} - Mensagens CSV ({msg_count} msgs)"
+            await send_backup_to_cloud(client, results["messages_csv"], caption)
+            cloud_files.append("messages_csv")
+
+        # Enviar participantes JSON
+        if "participants_json" in results and Path(results["participants_json"]).exists():
+            part_count = results.get("participants_count", 0)
+            caption = f"👥 Backup: {chat_title} - Participantes ({part_count} membros)"
+            await send_backup_to_cloud(client, results["participants_json"], caption)
+            cloud_files.append("participants_json")
+
+        # Enviar participantes CSV
+        if "participants_csv" in results and Path(results["participants_csv"]).exists():
+            part_count = results.get("participants_count", 0)
+            caption = f"👥 Backup: {chat_title} - Participantes CSV ({part_count} membros)"
+            await send_backup_to_cloud(client, results["participants_csv"], caption)
+            cloud_files.append("participants_csv")
+
+        # Enviar mensagem de resumo
+        summary_parts = [f"📊 **Resumo do Backup**\n"]
+        summary_parts.append(f"📁 Grupo: {chat_title}")
+        summary_parts.append(f"📅 Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        if "messages_count" in results:
+            summary_parts.append(f"💬 Mensagens: {results['messages_count']}")
+        if "participants_count" in results:
+            summary_parts.append(f"👥 Participantes: {results['participants_count']}")
+        if "media" in results:
+            summary_parts.append(f"🖼️ Arquivos de mídia: {results['media']['total']}")
+        summary_parts.append(f"\n✅ {len(cloud_files)} arquivo(s) enviado(s) para Saved Messages")
+
+        await client.send_message('me', "\n".join(summary_parts))
+        results["cloud_backup"] = True
+        results["cloud_files"] = cloud_files
+        logger.info(f"Backup enviado para Cloud Chat: {len(cloud_files)} arquivos")
+
+    return results
+</file>
+
+<file path="src/clean_telegram/cleaner.py">
+"""Módulo de limpeza do CleanTelegram.
+
+Contém as funções para apagar conversas e sair de grupos/canais.
+"""
+
+import asyncio
+import logging
+
+from telethon import TelegramClient
+from telethon.errors import FloodWaitError, RPCError
+from telethon.tl.functions.channels import LeaveChannelRequest
+from telethon.tl.functions.messages import DeleteChatUserRequest, DeleteHistoryRequest
+from telethon.tl.types import Channel, Chat, InputUserSelf, User
+
+logger = logging.getLogger(__name__)
+
+
+async def safe_sleep(seconds: float) -> None:
+    """Sleep curto para reduzir risco de rate limit."""
+    await asyncio.sleep(seconds)
+
+
+async def delete_dialog(client: TelegramClient, peer, *, dry_run: bool) -> None:
+    """Apaga o histórico do diálogo (tenta revogar quando aplicável)."""
+    if dry_run:
+        return
+    await client(
+        DeleteHistoryRequest(peer=peer, max_id=0, just_clear=False, revoke=True)
+    )
+
+
+async def leave_channel(client: TelegramClient, entity: Channel, *, dry_run: bool) -> None:
+    """Sai de um canal/megagrupo (Channel)."""
+    if dry_run:
+        return
+    await client(LeaveChannelRequest(entity))
+
+
+async def leave_legacy_chat(
+    client: TelegramClient, entity: Chat, *, dry_run: bool
+) -> None:
+    """Sai de um grupo antigo (Chat).
+
+    Telethon/Telegram têm diferenças entre Chat (grupo antigo) e Channel (canal/megagrupo).
+    """
+    if dry_run:
+        return
+
+    # Remove o próprio usuário do chat legado.
+    await client(DeleteChatUserRequest(chat_id=entity.id, user_id=InputUserSelf()))
+
+
+async def _process_dialog(
+    client: TelegramClient,
+    entity,
+    title: str,
+    index: int,
+    *,
+    dry_run: bool,
+) -> None:
+    """Processa um único diálogo, escolhendo a ação correta por tipo."""
+    if isinstance(entity, Channel):
+        logger.info("[%s] SAIR de canal/megagrupo: %s", index, title)
+        await leave_channel(client, entity, dry_run=dry_run)
+        return
+
+    if isinstance(entity, Chat):
+        logger.info("[%s] SAIR de grupo legado (Chat): %s", index, title)
+        try:
+            await leave_legacy_chat(client, entity, dry_run=dry_run)
+        except RPCError:
+            logger.warning(
+                "Falha ao sair via DeleteChatUserRequest; tentando fallback delete_dialog: %s",
+                title,
+            )
+            if not dry_run:
+                await client.delete_dialog(entity)
+        return
+
+    if isinstance(entity, User) or getattr(entity, "bot", None) is not None:
+        logger.info("[%s] APAGAR conversa: %s", index, title)
+        await delete_dialog(client, entity, dry_run=dry_run)
+        return
+
+    logger.info("[%s] APAGAR diálogo (tipo desconhecido): %s", index, title)
+    if not dry_run:
+        await client.delete_dialog(entity)
+
+
+async def clean_all_dialogs(
+    client: TelegramClient,
+    *,
+    dry_run: bool,
+    limit: int = 0,
+) -> int:
+    """Limpa todos os diálogos (apaga conversas e sai de grupos/canais).
+
+    Args:
+        client: Cliente Telethon conectado.
+        dry_run: Se True, não faz alterações (só imprime).
+        limit: Limite de diálogos para processar (0 = todos).
+
+    Returns:
+        Número de diálogos processados.
+    """
+    processed = 0
+
+    async for d in client.iter_dialogs():
+        if limit and processed >= limit:
+            break
+
+        title = d.name or "(sem nome)"
+        entity = d.entity
+        index = processed + 1
+
+        # FloodWait retry (não pular o diálogo)
+        max_retries = 5
+        attempt = 0
+        while True:
+            try:
+                await _process_dialog(
+                    client,
+                    entity,
+                    title,
+                    index,
+                    dry_run=dry_run,
+                )
+                await safe_sleep(0.35)
+                break
+
+            except FloodWaitError as e:
+                attempt += 1
+                wait_s = int(getattr(e, "seconds", 0) or 0)
+                logger.warning(
+                    "Rate limit (FloodWait) em '%s'. Aguardando %ss (tentativa %s/%s)...",
+                    title,
+                    wait_s,
+                    attempt,
+                    max_retries,
+                )
+                await asyncio.sleep(wait_s)
+                if attempt >= max_retries:
+                    logger.error("Max retries atingido; pulando '%s'.", title)
+                    break
+
+            except RPCError:
+                logger.exception("RPCError em '%s'", title)
+                break
+
+            except Exception:
+                logger.exception("Erro inesperado em '%s'", title)
+                break
+
+        processed += 1
+
+    return processed
+</file>
+
+<file path="src/clean_telegram/cli.py">
+"""CLI module for CleanTelegram."""
+
+import argparse
+import asyncio
+import logging
+import os
+import sys
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Literal
+
+from dotenv import load_dotenv
+from telethon import TelegramClient
+from telethon.errors import RPCError
+
+from .backup import backup_group_full, backup_group_with_media
+from .cleaner import clean_all_dialogs
+from .interactive import interactive_main
+from .reports import (
+    generate_all_reports,
+    generate_contacts_report,
+    generate_groups_channels_report,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class AuthConfig:
+    """Configuração de autenticação do cliente Telegram."""
+
+    mode: Literal["user", "bot"]
+    session_name: str
+    bot_token: str | None = None
+
+
+def env_int(name: str) -> int:
+    """Lê uma variável de ambiente obrigatória e converte para int."""
+    v = os.getenv(name)
+    if not v:
+        raise SystemExit(f"Faltou {name} no .env")
+    try:
+        return int(v)
+    except ValueError:
+        raise SystemExit(f"Valor inválido para {name}: '{v}' não é um inteiro válido")
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse argumentos da linha de comando."""
+    parser = argparse.ArgumentParser(
+        description="Apaga diálogos e sai de grupos/canais (Telethon)."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Não faz alterações; só imprime o que faria.",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Não pedir confirmação interativa.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Limita quantos diálogos processar (0 = todos).",
+    )
+    parser.add_argument(
+        "-i",
+        "--interactive",
+        action="store_true",
+        help="Modo interativo com menus visuais.",
+    )
+
+    # Opções de relatório
+    parser.add_argument(
+        "--report",
+        choices=["groups", "contacts", "all"],
+        help="Gera relatório no diretório relatorios/ (groups = grupos e canais)",
+    )
+    parser.add_argument(
+        "--report-format",
+        choices=["csv", "json", "txt"],
+        default="csv",
+        help="Formato do relatório (padrão: csv).",
+    )
+    parser.add_argument(
+        "--report-output",
+        type=str,
+        default=None,
+        help="Caminho do arquivo de relatório (opcional, usa padrão com timestamp se omitido).",
+    )
+
+    # Opções de backup
+    parser.add_argument(
+        "--backup-group",
+        type=str,
+        metavar="CHAT_ID",
+        help="Faz backup completo de um grupo (mensagens + participantes).",
+    )
+    parser.add_argument(
+        "--export-members",
+        type=str,
+        metavar="CHAT_ID",
+        help="Exporta participantes de um grupo.",
+    )
+    parser.add_argument(
+        "--export-messages",
+        type=str,
+        metavar="CHAT_ID",
+        help="Exporta mensagens de um grupo.",
+    )
+    parser.add_argument(
+        "--backup-format",
+        choices=["json", "csv", "both"],
+        default="json",
+        help="Formato do backup (padrão: json).",
+    )
+    parser.add_argument(
+        "--backup-output",
+        type=str,
+        default="backups",
+        help="Diretório para arquivos de backup (padrão: backups/).",
+    )
+    parser.add_argument(
+        "--download-media",
+        action="store_true",
+        help="Baixa arquivos de mídia do grupo (junto com --backup-group).",
+    )
+    parser.add_argument(
+        "--media-types",
+        type=str,
+        default=None,
+        help="Tipos de mídia para baixar (separados por vírgula: photo,video,document,audio,voice,sticker,gif).",
+    )
+    parser.add_argument(
+        "--backup-to-cloud",
+        action="store_true",
+        help="Envia arquivos de backup para Cloud Chat (Saved Messages).",
+    )
+
+    return parser.parse_args()
+
+
+def resolve_auth_config() -> AuthConfig:
+    """Resolve modo de autenticação (bot ou usuário) com base no ambiente."""
+    bot_token = os.getenv("BOT_TOKEN")
+    if bot_token:
+        bot_session_name = os.getenv("BOT_SESSION_NAME", "bot_session")
+        return AuthConfig(
+            mode="bot",
+            session_name=bot_session_name,
+            bot_token=bot_token,
+        )
+
+    session_name = os.getenv("SESSION_NAME", "session")
+    return AuthConfig(mode="user", session_name=session_name)
+
+
+def create_client() -> tuple[TelegramClient, AuthConfig]:
+    """Cria cliente Telegram e metadados de autenticação."""
+    api_id = env_int("API_ID")
+    api_hash = os.getenv("API_HASH")
+    if not api_hash:
+        raise SystemExit("Faltou API_HASH no .env")
+
+    auth_config = resolve_auth_config()
+    client = TelegramClient(auth_config.session_name, api_id, api_hash)
+    return client, auth_config
+
+
+async def start_client(client: TelegramClient, auth_config: AuthConfig) -> None:
+    """Inicializa sessão do cliente conforme o modo de autenticação."""
+    if auth_config.mode == "bot":
+        await client.start(bot_token=auth_config.bot_token)
+        return
+
+    await client.start()
+
+
+def confirm_action() -> bool:
+    """Pede confirmação do usuário antes de executar ação destrutiva."""
+    print(
+        "ATENÇÃO: isso vai apagar conversas e sair de grupos/canais.\n"
+        "Digite 'APAGAR TUDO' para confirmar: ",
+        end="",
+        flush=True,
+    )
+    confirm = sys.stdin.readline().strip()
+    return confirm == "APAGAR TUDO"
+
+
+def _get_timestamp() -> str:
+    """Gera timestamp para nomes de arquivos."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def warn_bot_permissions(
+    *,
+    auth_config: AuthConfig,
+    is_clean_mode: bool,
+    is_backup_mode: bool,
+) -> None:
+    """Exibe aviso de permissões quando operação sensível roda em modo bot."""
+    if auth_config.mode != "bot":
+        return
+
+    if not is_clean_mode and not is_backup_mode:
+        return
+
+    logger.warning(
+        "Modo bot ativo: operações de limpeza/backup exigem permissões administrativas "
+        "no chat (ex.: apagar mensagens, remover usuários, acessar histórico)."
+    )
+
+
+def format_rpc_error(error: RPCError, auth_config: AuthConfig) -> str:
+    """Converte RPCError para mensagem amigável ao usuário."""
+    if auth_config.mode == "bot":
+        return (
+            "Falha em modo bot. Verifique se o bot foi adicionado ao chat e se possui "
+            "as permissões necessárias para a ação solicitada. "
+            f"Detalhe Telegram: {error}"
+        )
+
+    return f"Erro da API do Telegram: {error}"
+
+
+async def run_report(args: argparse.Namespace, client: TelegramClient) -> None:
+    """Executa geração de relatórios conforme argumentos."""
+    me = await client.get_me()
+    logger.info(
+        "Logado como: %s (id=%s)",
+        me.username or me.first_name,
+        me.id,
+    )
+
+    report_type = args.report
+    output_format = args.report_format
+    output_path = args.report_output
+
+    logger.info(
+        "Gerando relatório: %s (formato: %s)",
+        report_type,
+        output_format,
+    )
+
+    if report_type == "all":
+        # Gerar todos os relatórios
+        results = await generate_all_reports(client, output_format=output_format)
+        for report_name, path in results.items():
+            logger.info("Relatório '%s' gerado: %s", report_name, path)
+    elif report_type == "groups":
+        # Grupos e canais são tratados juntos
+        path = await generate_groups_channels_report(
+            client,
+            output_path=output_path,
+            output_format=output_format,
+        )
+        logger.info("Relatório de grupos/canais gerado: %s", path)
+    elif report_type == "contacts":
+        path = await generate_contacts_report(
+            client,
+            output_path=output_path,
+            output_format=output_format,
+        )
+        logger.info("Relatório de contatos gerado: %s", path)
+
+
+async def run_clean(args: argparse.Namespace, client: TelegramClient) -> None:
+    """Executa limpeza de diálogos."""
+    me = await client.get_me()
+    logger.info(
+        "Logado como: %s (id=%s)",
+        me.username or me.first_name,
+        me.id,
+    )
+
+    processed = await clean_all_dialogs(
+        client,
+        dry_run=args.dry_run,
+        limit=args.limit,
+    )
+
+    logger.info("Concluído. Diálogos processados: %s", processed)
+
+
+async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
+    """Executa backup de grupo ou exportação de dados."""
+    me = await client.get_me()
+    logger.info(
+        "Logado como: %s (id=%s)",
+        me.username or me.first_name,
+        me.id,
+    )
+
+    # Determinar o chat alvo
+    chat_id = args.backup_group or args.export_members or args.export_messages
+    if not chat_id:
+        logger.error("Nenhum chat especificado para backup")
+        return
+
+    # Resolver a entidade do chat
+    try:
+        entity = await client.get_entity(chat_id)
+    except Exception as e:
+        logger.error(f"Erro ao resolver chat '{chat_id}': {e}")
+        return
+
+    chat_title = getattr(entity, 'title', str(entity.id))
+    logger.info(f"Processando chat: {chat_title}")
+
+    output_dir = args.backup_output
+    output_format = args.backup_format
+
+    # Processar tipos de mídia se especificados
+    media_types = None
+    if args.media_types:
+        media_types = args.media_types.split(',')
+
+    # Backup completo
+    if args.backup_group:
+        if args.download_media:
+            logger.info(f"Fazendo backup completo COM MÍDIA no formato '{output_format}'...")
+            results = await backup_group_with_media(
+                client, entity, output_dir, output_format,
+                download_media=True,
+                media_types=media_types,
+                send_to_cloud=args.backup_to_cloud,
+            )
+        else:
+            logger.info(f"Fazendo backup completo no formato '{output_format}'...")
+            # Usar backup_group_with_media mesmo sem mídia para suportar send_to_cloud
+            results = await backup_group_with_media(
+                client, entity, output_dir, output_format,
+                download_media=False,
+                send_to_cloud=args.backup_to_cloud,
+            )
+
+        logger.info(f"Backup concluído:")
+        if "messages_count" in results:
+            logger.info(f"  • Mensagens: {results['messages_count']}")
+        if "participants_count" in results:
+            logger.info(f"  • Participantes: {results['participants_count']}")
+        if "media" in results:
+            logger.info(f"  • Arquivos de mídia: {results['media']['total']} baixados")
+            for media_type, count in results['media'].items():
+                if media_type != 'total' and count > 0:
+                    logger.info(f"    - {media_type}: {count}")
+        if "cloud_backup" in results and results["cloud_backup"]:
+            logger.info(f"  • Cloud Chat: {len(results.get('cloud_files', []))} arquivo(s) enviado(s) para Saved Messages")
+
+        if "messages_json" in results:
+            logger.info(f"  • Mensagens JSON: {results['messages_json']}")
+        if "participants_json" in results:
+            logger.info(f"  • Participantes JSON: {results['participants_json']}")
+
+    # Exportar apenas participantes
+    elif args.export_members:
+        from .backup import export_participants_to_json, export_participants_to_csv
+
+        timestamp = _get_timestamp()
+        safe_name = "".join(c for c in chat_title if c.isalnum() or c in (' ', '-', '_')).strip()
+
+        if output_format in ("json", "both"):
+            output_path = f"{output_dir}/{safe_name}_participants_{timestamp}.json"
+            count = await export_participants_to_json(client, entity, output_path)
+            logger.info(f"Participantes exportados (JSON): {count} -> {output_path}")
+
+        if output_format in ("csv", "both"):
+            output_path = f"{output_dir}/{safe_name}_participants_{timestamp}.csv"
+            count = await export_participants_to_csv(client, entity, output_path)
+            logger.info(f"Participantes exportados (CSV): {count} -> {output_path}")
+
+    # Exportar apenas mensagens
+    elif args.export_messages:
+        from .backup import export_messages_to_json, export_messages_to_csv
+
+        timestamp = _get_timestamp()
+        safe_name = "".join(c for c in chat_title if c.isalnum() or c in (' ', '-', '_')).strip()
+
+        if output_format in ("json", "both"):
+            output_path = f"{output_dir}/{safe_name}_messages_{timestamp}.json"
+            count = await export_messages_to_json(client, entity, output_path)
+            logger.info(f"Mensagens exportadas (JSON): {count} -> {output_path}")
+
+        if output_format in ("csv", "both"):
+            output_path = f"{output_dir}/{safe_name}_messages_{timestamp}.csv"
+            count = await export_messages_to_csv(client, entity, output_path)
+            logger.info(f"Mensagens exportadas (CSV): {count} -> {output_path}")
+
+
+async def main() -> None:
+    """Entry-point assíncrono."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    load_dotenv()
+    args = parse_args()
+
+    client, auth_config = create_client()
+    logger.info(
+        "Autenticação selecionada: %s (session=%s)",
+        auth_config.mode,
+        auth_config.session_name,
+    )
+
+    # Modo interativo tem precedência
+    if args.interactive:
+        async with client:
+            await start_client(client, auth_config)
+            await interactive_main(client)
+        return
+
+    # Verificar se é modo backup (não precisa de confirmação)
+    is_backup_mode = (
+        args.backup_group is not None
+        or args.export_members is not None
+        or args.export_messages is not None
+    )
+
+    # Verificar se é modo relatório (não precisa de confirmação)
+    is_report_mode = args.report is not None
+    is_clean_mode = not is_backup_mode and not is_report_mode
+
+    if not is_backup_mode and not is_report_mode and not args.dry_run and not args.yes:
+        if not confirm_action():
+            print("Cancelado.")
+            return
+
+    warn_bot_permissions(
+        auth_config=auth_config,
+        is_clean_mode=is_clean_mode,
+        is_backup_mode=is_backup_mode,
+    )
+
+    async with client:
+        await start_client(client, auth_config)
+        try:
+            if is_backup_mode:
+                await run_backup(args, client)
+            elif is_report_mode:
+                await run_report(args, client)
+            else:
+                await run_clean(args, client)
+        except RPCError as error:
+            logger.error(format_rpc_error(error, auth_config))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+</file>
+
+<file path="src/clean_telegram/interactive.py">
+"""Modo interativo para o CLI do CleanTelegram usando Questionary.
+
+Oferece menus de seleção bonitos e intuitivos para ações, tipos de relatório e formatos,
+semelhante a ferramentas como Claude Code e Mole.
+"""
+
+import logging
+
+import questionary
+
+from telethon import TelegramClient
+
+from .backup import backup_group_with_media
+from .cleaner import clean_all_dialogs
+from .reports import (
+    generate_all_reports,
+    generate_contacts_report,
+    generate_groups_channels_report,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# Estilo customizado para Questionary
+CUSTOM_STYLE = questionary.Style(
+    [
+        ("qmark", "fg:#67b7a1 bold"),  # Cor do marcador "?"
+        ("question", "bold"),           # Pergunta em negrito
+        ("selected", "fg:#cc5454"),     # Opção selecionada
+        ("pointer", "fg:#67b7a1 bold"), # Ponteiro "> "
+        ("highlighted", "fg:#67b7a1 bold"),  # Opção destacada
+        ("answer", "fg:#f6b93b bold"),  # Resposta
+        ("separator", "fg:#6e6e6e"),    # Separador
+    ]
+)
+
+
+async def interactive_main(client: TelegramClient) -> None:
+    """Menu interativo principal."""
+    while True:
+        me = await client.get_me()
+        username = me.username or me.first_name
+
+        # Menu principal
+        action = await questionary.select(
+            f"🚀 CleanTelegram - Logado como: {username} (id={me.id})\n"
+            "O que você deseja fazer?",
+            choices=[
+                questionary.Choice("🧹 Limpar conta", value="clean", description="Apaga conversas e sai de grupos/canais"),
+                questionary.Choice("📊 Gerar relatórios", value="reports", description="Exporta grupos, canais e contatos"),
+                questionary.Choice("📦 Backup de grupo", value="backup", description="Faz backup de mensagens e participantes"),
+                questionary.Choice("⚙️  Ver estatísticas", value="stats", description="Mostra informações da conta"),
+                questionary.Choice("🚪 Sair", value="exit"),
+            ],
+            style=CUSTOM_STYLE,
+        ).ask_async()
+
+        if action == "exit":
+            print("\n👋 Até logo!")
+            break
+        elif action == "clean":
+            await interactive_clean(client)
+        elif action == "reports":
+            await interactive_reports(client)
+        elif action == "backup":
+            await interactive_backup(client)
+        elif action == "stats":
+            await interactive_stats(client)
+
+        # Pausa antes de voltar ao menu (apenas se não saiu)
+        if action != "exit":
+            await questionary.press_any_key_to_continue("\nPressione qualquer tecla para continuar...").ask_async()
+
+
+async def interactive_clean(client: TelegramClient) -> None:
+    """Fluxo interativo de limpeza."""
+    # Aviso inicial
+    confirm = await questionary.confirm(
+        "⚠️  ATENÇÃO: Esta ação é DESTRUTIVA e IRREVERSÍVEL!\n"
+        "   • Apagará TODAS as conversas\n"
+        "   • Você sairá de TODOS os grupos e canais\n\n"
+        "Deseja continuar?",
+        default=False,
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    if not confirm:
+        print("\n❌ Operação cancelada.")
+        return
+
+    # Modo dry-run
+    dry_run = await questionary.confirm(
+        "Executar em modo dry-run (simulação)?",
+        default=True,
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    # Confirmação adicional se não for dry-run
+    if not dry_run:
+        confirm_real = await questionary.confirm(
+            "🔴 Confirma que deseja EXECUTAR de verdade?",
+            default=False,
+            style=CUSTOM_STYLE,
+        ).ask_async()
+
+        if not confirm_real:
+            print("\n❌ Operação cancelada.")
+            return
+
+    # Limite de diálogos
+    limit_choice = await questionary.select(
+        "Quantos diálogos processar?",
+        choices=[
+            questionary.Choice("Todos os diálogos", value=0),
+            questionary.Choice("Apenas os primeiros 10", value=10),
+            questionary.Choice("Apenas os primeiros 50", value=50),
+            questionary.Choice("Cancelar", value=None),
+        ],
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    if limit_choice is None:
+        print("\n❌ Operação cancelada.")
+        return
+
+    # Executar
+    print(f"\n{'🔍 Simulando' if dry_run else '🚀 Executando'} limpeza...")
+
+    try:
+        processed = await clean_all_dialogs(
+            client,
+            dry_run=dry_run,
+            limit=limit_choice,
+        )
+
+        if dry_run:
+            print(f"\n✅ Simulação concluída! {processed} diálogos seriam processados.")
+        else:
+            print(f"\n✅ Limpeza concluída! {processed} diálogos processados.")
+    except Exception as e:
+        print(f"\n❌ Erro durante limpeza: {e}")
+        logger.exception("Erro na limpeza interativa")
+
+
+async def interactive_reports(client: TelegramClient) -> None:
+    """Fluxo interativo de geração de relatórios."""
+    # Tipo de relatório
+    report_type = await questionary.select(
+        "Que tipo de relatório deseja gerar?",
+        choices=[
+            questionary.Choice("📁 Grupos e Canais", value="groups"),
+            questionary.Choice("👥 Contatos", value="contacts"),
+            questionary.Choice("📦 Todos os relatórios", value="all"),
+        ],
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    if not report_type:
+        return
+
+    # Formato
+    output_format = await questionary.select(
+        "Em qual formato?",
+        choices=[
+            questionary.Choice("📊 CSV (planilha)", value="csv"),
+            questionary.Choice("📋 JSON (estruturado)", value="json"),
+            questionary.Choice("📝 TXT (texto simples)", value="txt"),
+        ],
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    if not output_format:
+        return
+
+    # Caminho personalizado
+    custom_path = await questionary.confirm(
+        "Deseja especificar caminho do arquivo?",
+        default=False,
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    output_path = None
+    if custom_path:
+        output_path = await questionary.path(
+            "Caminho do arquivo (deixe vazio para padrão)",
+            style=CUSTOM_STYLE,
+        ).ask_async()
+
+        if not output_path:
+            output_path = None
+
+    # Gerar relatório
+    print(f"\n📊 Gerando relatório: {report_type} ({output_format})...")
+
+    try:
+        if report_type == "all":
+            results = await generate_all_reports(client, output_format=output_format)
+            print("\n✅ Relatórios gerados:")
+            for name, path in results.items():
+                print(f"   • {name}: {path}")
+        elif report_type == "groups":
+            path = await generate_groups_channels_report(
+                client,
+                output_path=output_path,
+                output_format=output_format,
+            )
+            print(f"\n✅ Relatório de grupos/canais: {path}")
+        else:  # contacts
+            path = await generate_contacts_report(
+                client,
+                output_path=output_path,
+                output_format=output_format,
+            )
+            print(f"\n✅ Relatório de contatos: {path}")
+
+    except Exception as e:
+        print(f"\n❌ Erro ao gerar relatório: {e}")
+        logger.exception("Erro na geração de relatório")
+
+
+async def interactive_stats(client: TelegramClient) -> None:
+    """Mostra estatísticas da conta."""
+    me = await client.get_me()
+
+    print("\n📊 Estatísticas da Conta")
+    print("=" * 40)
+    print(f"👤 Nome: {me.first_name} {me.last_name or ''}".strip())
+    print(f"📱 Username: @{me.username}" if me.username else "📱 Username: (não definido)")
+    print(f"🆔 ID: {me.id}")
+    print(f"✅ Verificado: {'Sim' if getattr(me, 'verified', False) else 'Não'}")
+    print(f"🤖 Bot: {'Sim' if getattr(me, 'bot', False) else 'Não'}")
+
+    # Contar diálogos
+    print("\n⏳ Contando diálogos...")
+
+    dialogs_count = 0
+    groups_count = 0
+    users_count = 0
+    channels_count = 0
+
+    async for dialog in client.iter_dialogs():
+        dialogs_count += 1
+        entity = dialog.entity
+
+        # Verificar tipo usando duck-typing
+        if hasattr(entity, "megagroup"):
+            if getattr(entity, "broadcast", False):
+                channels_count += 1
+            else:
+                groups_count += 1
+        elif hasattr(entity, "participants_count"):
+            # Chat legado
+            groups_count += 1
+        elif hasattr(entity, "first_name") or hasattr(entity, "bot"):
+            users_count += 1
+
+    print("\n📁 Diálogos:")
+    print(f"   • Total: {dialogs_count}")
+    print(f"   • Grupos: {groups_count}")
+    print(f"   • Canais: {channels_count}")
+    print(f"   • Contatos: {users_count}")
+
+    print("\n💡 Dica: Use 'Gerar relatórios' para exportar esses dados.")
+
+
+async def interactive_backup(client: TelegramClient) -> None:
+    """Fluxo interativo de backup de grupo."""
+    # Perguntar qual grupo/canal fazer backup
+    chat_id = await questionary.text(
+        "Digite o ID, username ou link do grupo/canal (ex: @grupo, -1001234567890)",
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    if not chat_id:
+        print("\n❌ Operação cancelada.")
+        return
+
+    # Tentar resolver a entidade
+    try:
+        entity = await client.get_entity(chat_id)
+    except Exception as e:
+        print(f"\n❌ Erro ao encontrar chat '{chat_id}': {e}")
+        return
+
+    chat_title = getattr(entity, 'title', str(entity.id))
+    print(f"\n📁 Grupo encontrado: {chat_title}")
+
+    # Perguntar formato
+    output_format = await questionary.select(
+        "Em qual formato exportar?",
+        choices=[
+            questionary.Choice("📋 JSON", value="json"),
+            questionary.Choice("📊 CSV", value="csv"),
+            questionary.Choice("📦 Ambos (JSON + CSV)", value="both"),
+        ],
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    if not output_format:
+        print("\n❌ Operação cancelada.")
+        return
+
+    # Perguntar se quer baixar mídia
+    download_media = await questionary.confirm(
+        "Baixar arquivos de mídia (fotos, vídeos, documentos)?",
+        default=False,
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    # Tipos de mídia (se quiser baixar)
+    media_types = None
+    if download_media:
+        media_choice = await questionary.select(
+            "Quais tipos de mídia baixar?",
+            choices=[
+                questionary.Choice("📦 Todos os tipos", value=None),
+                questionary.Choice("📷 Apenas fotos", value=["photo"]),
+                questionary.Choice("🎥 Apenas vídeos", value=["video"]),
+                questionary.Choice("📄 Apenas documentos", value=["document"]),
+                questionary.Choice("Seleção personalizada", value="custom"),
+            ],
+            style=CUSTOM_STYLE,
+        ).ask_async()
+
+        if media_choice == "custom":
+            media_types = []
+            if await questionary.confirm("📷 Fotos?", default=False, style=CUSTOM_STYLE).ask_async():
+                media_types.append("photo")
+            if await questionary.confirm("🎥 Vídeos?", default=False, style=CUSTOM_STYLE).ask_async():
+                media_types.append("video")
+            if await questionary.confirm("📄 Documentos?", default=False, style=CUSTOM_STYLE).ask_async():
+                media_types.append("document")
+            if await questionary.confirm("🎵 Áudio?", default=False, style=CUSTOM_STYLE).ask_async():
+                media_types.append("audio")
+            if await questionary.confirm("🎤 Voice notes?", default=False, style=CUSTOM_STYLE).ask_async():
+                media_types.append("voice")
+            if await questionary.confirm("😄 Stickers?", default=False, style=CUSTOM_STYLE).ask_async():
+                media_types.append("sticker")
+            if await questionary.confirm("🎞️ GIFs?", default=False, style=CUSTOM_STYLE).ask_async():
+                media_types.append("gif")
+
+            if not media_types:
+                print("\n⚠️ Nenhum tipo selecionado, baixando todos...")
+                media_types = None
+        else:
+            media_types = media_choice
+
+    # Perguntar se quer enviar para Cloud Chat
+    send_to_cloud = await questionary.confirm(
+        "☁️ Enviar backup para Cloud Chat (Saved Messages)?\n"
+        "   Os arquivos serão enviados para suas 'Mensagens Salvas' no Telegram.",
+        default=False,
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    # Confirmação final
+    print("\n📋 Resumo do backup:")
+    print(f"   • Grupo: {chat_title}")
+    print(f"   • Formato: {output_format}")
+    if download_media:
+        print(f"   • Mídia: Sim ({'todos os tipos' if not media_types else ', '.join(media_types)})")
+    else:
+        print(f"   • Mídia: Não")
+    print(f"   • Cloud Chat: {'Sim' if send_to_cloud else 'Não'}")
+
+    confirm = await questionary.confirm(
+        "\nIniciar backup?",
+        default=True,
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    if not confirm:
+        print("\n❌ Operação cancelada.")
+        return
+
+    # Executar backup
+    print(f"\n📦 Iniciando backup...")
+
+    try:
+        results = await backup_group_with_media(
+            client,
+            entity,
+            "backups",
+            output_format,
+            download_media=download_media,
+            media_types=media_types,
+            send_to_cloud=send_to_cloud,
+        )
+
+        print("\n✅ Backup concluído!")
+        print(f"   • Mensagens: {results.get('messages_count', 0)}")
+        print(f"   • Participantes: {results.get('participants_count', 0)}")
+
+        if "media" in results:
+            print(f"   • Arquivos de mídia: {results['media']['total']} baixados")
+            for media_type, count in results['media'].items():
+                if media_type != 'total' and count > 0:
+                    print(f"     - {media_type}: {count}")
+
+        if "cloud_backup" in results and results["cloud_backup"]:
+            print(f"   • ☁️ Cloud Chat: {len(results.get('cloud_files', []))} arquivo(s) enviado(s) para Saved Messages")
+
+        if "messages_json" in results:
+            print(f"\n📁 Arquivos salvos:")
+            if "messages_json" in results:
+                print(f"   • Mensagens: {results['messages_json']}")
+            if "participants_json" in results:
+                print(f"   • Participantes: {results['participants_json']}")
+            if "messages_csv" in results:
+                print(f"   • Mensagens CSV: {results['messages_csv']}")
+            if "participants_csv" in results:
+                print(f"   • Participantes CSV: {results['participants_csv']}")
+
+    except Exception as e:
+        print(f"\n❌ Erro durante backup: {e}")
+        logger.exception("Erro no backup interativo")
+</file>
+
+<file path="src/clean_telegram/reports.py">
+"""Módulo de geração de relatórios para CleanTelegram.
+
+Gera relatórios de grupos, canais e contatos em diversos formatos.
+"""
+
+import csv
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from telethon import TelegramClient
+from telethon.tl.types import Channel, Chat, User
+
+
+def _get_timestamp() -> str:
+    """Retorna timestamp atual formatado para nomes de arquivo."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def _safe_getattr(obj: Any, attr: str, default: Any = None) -> Any:
+    """getattr seguro que retorna default se AttributeError ocorrer."""
+    try:
+        return getattr(obj, attr, default)
+    except (AttributeError, TypeError):
+        return default
+
+
+def _is_channel(entity: Any) -> bool:
+    """Verifica se a entidade é um Channel (tem atributo megagroup)."""
+    return hasattr(entity, "megagroup") or hasattr(entity, "broadcast")
+
+
+def _is_chat(entity: Any) -> bool:
+    """Verifica se a entidade é um Chat (grupo legado, tem participants_count mas não megagroup)."""
+    return hasattr(entity, "participants_count") and not hasattr(entity, "megagroup")
+
+
+def _is_user(entity: Any) -> bool:
+    """Verifica se a entidade é um User (tem first_name ou bot).
+
+    Nota: User pode ter username mas não megagroup/broadcast (Channel)
+    nem apenas participants_count (Chat legado).
+    """
+    return (
+        hasattr(entity, "first_name")
+        or hasattr(entity, "bot")
+        or (hasattr(entity, "username") and not hasattr(entity, "megagroup"))
+    ) and not _is_channel(entity) and not _is_chat(entity)
+
+
+async def generate_groups_channels_report(
+    client: TelegramClient,
+    output_path: str | None = None,
+    output_format: str = "csv",
+) -> str:
+    """Gera relatório de grupos e canais.
+
+    Args:
+        client: Cliente Telethon conectado.
+        output_path: Caminho do arquivo de saída. Se None, usa padrão com timestamp.
+        output_format: Formato do relatório (csv, json ou txt).
+
+    Returns:
+        Caminho do arquivo gerado.
+    """
+    # Coletar dados
+    items = []
+
+    async for dialog in client.iter_dialogs():
+        entity = dialog.entity
+
+        if not (_is_channel(entity) or _is_chat(entity)):
+            continue
+
+        item: dict[str, Any] = {
+            "title": dialog.name or "(sem nome)",
+            "id": entity.id,
+        }
+
+        if _is_channel(entity):
+            item["type"] = "Channel"
+            item["username"] = _safe_getattr(entity, "username", "")
+            item["participants_count"] = _safe_getattr(entity, "participants_count", 0)
+            item["is_megagroup"] = _safe_getattr(entity, "megagroup", False)
+            item["is_broadcast"] = _safe_getattr(entity, "broadcast", False)
+            item["creator"] = _safe_getattr(entity, "creator", False)
+            item["admin_rights"] = _safe_getattr(entity, "admin_rights") is not None
+            item["date"] = (
+                _safe_getattr(entity, "date").isoformat()
+                if _safe_getattr(entity, "date")
+                else ""
+            )
+        else:  # Chat (grupo legado)
+            item["type"] = "Chat"
+            item["username"] = ""
+            item["participants_count"] = _safe_getattr(entity, "participants_count", 0)
+            item["is_megagroup"] = False
+            item["is_broadcast"] = False
+            item["creator"] = _safe_getattr(entity, "creator", False)
+            item["admin_rights"] = False
+            item["date"] = ""
+
+        items.append(item)
+
+    # Validar formato antes de processar
+    valid_formats = {"csv", "json", "txt"}
+    if output_format not in valid_formats:
+        raise ValueError(f"Formato não suportado: {output_format}. Use um de: {', '.join(sorted(valid_formats))}")
+
+    # Determinar caminho de saída
+    if output_path is None:
+        timestamp = _get_timestamp()
+        suffix = output_format  # O formato já é a extensão
+        output_path = f"relatorios/groups_channels_{timestamp}.{suffix}"
+
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Gerar relatório no formato solicitado
+    if output_format == "csv":
+        _write_csv_report(items, output_file)
+    elif output_format == "json":
+        _write_json_report(items, output_file, report_type="groups_channels")
+    elif output_format == "txt":
+        _write_txt_report(items, output_file, report_type="groups_channels")
+
+    return str(output_file)
+
+
+async def generate_contacts_report(
+    client: TelegramClient,
+    output_path: str | None = None,
+    output_format: str = "csv",
+) -> str:
+    """Gera relatório de contatos e usuários.
+
+    Args:
+        client: Cliente Telethon conectado.
+        output_path: Caminho do arquivo de saída. Se None, usa padrão com timestamp.
+        output_format: Formato do relatório (csv, json ou txt).
+
+    Returns:
+        Caminho do arquivo gerado.
+    """
+    # Coletar dados
+    items = []
+
+    async for dialog in client.iter_dialogs():
+        entity = dialog.entity
+
+        if not _is_user(entity):
+            continue
+
+        # Formatar nome
+        first_name = _safe_getattr(entity, "first_name", "")
+        last_name = _safe_getattr(entity, "last_name", "")
+        full_name = f"{first_name} {last_name}".strip() or first_name or "(sem nome)"
+
+        # Status
+        status = _safe_getattr(entity, "status", None)
+        status_str = ""
+        if status:
+            if hasattr(status, "was_online"):
+                status_str = f"Último acesso: {_format_status(status)}"
+            elif hasattr(status, "expires"):
+                status_str = "Online"
+            else:
+                status_str = str(type(status).__name__)
+
+        item: dict[str, Any] = {
+            "name": full_name,
+            "id": entity.id,
+            "username": f"@{_safe_getattr(entity, 'username', '')}" if _safe_getattr(entity, "username") else "",
+            "is_bot": _safe_getattr(entity, "bot", False),
+            "is_verified": _safe_getattr(entity, "verified", False),
+            "is_premium": _safe_getattr(entity, "premium", False),
+            "status": status_str,
+            "phone": _safe_getattr(entity, "phone", ""),
+        }
+
+        items.append(item)
+
+    # Validar formato antes de processar
+    valid_formats = {"csv", "json", "txt"}
+    if output_format not in valid_formats:
+        raise ValueError(f"Formato não suportado: {output_format}. Use um de: {', '.join(sorted(valid_formats))}")
+
+    # Determinar caminho de saída
+    if output_path is None:
+        timestamp = _get_timestamp()
+        suffix = output_format  # O formato já é a extensão
+        output_path = f"relatorios/contacts_{timestamp}.{suffix}"
+
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Gerar relatório no formato solicitado
+    if output_format == "csv":
+        _write_csv_report(items, output_file, report_type="contacts")
+    elif output_format == "json":
+        _write_json_report(items, output_file, report_type="contacts")
+    elif output_format == "txt":
+        _write_txt_report(items, output_file, report_type="contacts")
+    else:
+        # Nunca deve chegar aqui devido à validação acima
+        raise ValueError(f"Formato não suportado: {output_format}")
+
+    return str(output_file)
+
+
+def _format_status(status) -> str:
+    """Formata status de usuário para exibição."""
+    if hasattr(status, "was_online") and status.was_online:
+        return status.was_online.strftime("%d/%m/%Y %H:%M")
+    return "Desconhecido"
+
+
+def _write_csv_report(items: list[dict[str, Any]], output_file: Path, report_type: str = "groups_channels") -> None:
+    """Escreve relatório em formato CSV."""
+    if not items:
+        # Criar arquivo vazio com cabeçalho
+        with open(output_file, "w", newline="", encoding="utf-8") as f:
+            if report_type == "groups_channels":
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=[
+                        "Tipo",
+                        "Nome",
+                        "ID",
+                        "Username",
+                        "Participantes",
+                        "Megagrupo",
+                        "Broadcast",
+                        "Criador",
+                        "Admin",
+                        "Data Criação",
+                    ],
+                )
+            else:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=[
+                        "Nome",
+                        "ID",
+                        "Username",
+                        "Bot",
+                        "Verificado",
+                        "Premium",
+                        "Status",
+                        "Telefone",
+                    ],
+                )
+            writer.writeheader()
+        return
+
+    with open(output_file, "w", newline="", encoding="utf-8") as f:
+        if report_type == "groups_channels":
+            fieldnames = [
+                "Tipo",
+                "Nome",
+                "ID",
+                "Username",
+                "Participantes",
+                "Megagrupo",
+                "Broadcast",
+                "Criador",
+                "Admin",
+                "Data Criação",
+            ]
+            rows = [
+                {
+                    "Tipo": item["type"],
+                    "Nome": item["title"],
+                    "ID": item["id"],
+                    "Username": item["username"],
+                    "Participantes": item["participants_count"],
+                    "Megagrupo": "Sim" if item["is_megagroup"] else "Não",
+                    "Broadcast": "Sim" if item["is_broadcast"] else "Não",
+                    "Criador": "Sim" if item["creator"] else "Não",
+                    "Admin": "Sim" if item["admin_rights"] else "Não",
+                    "Data Criação": item["date"],
+                }
+                for item in items
+            ]
+        else:  # contacts
+            fieldnames = [
+                "Nome",
+                "ID",
+                "Username",
+                "Bot",
+                "Verificado",
+                "Premium",
+                "Status",
+                "Telefone",
+            ]
+            rows = [
+                {
+                    "Nome": item["name"],
+                    "ID": item["id"],
+                    "Username": item["username"],
+                    "Bot": "Sim" if item["is_bot"] else "Não",
+                    "Verificado": "Sim" if item["is_verified"] else "Não",
+                    "Premium": "Sim" if item["is_premium"] else "Não",
+                    "Status": item["status"],
+                    "Telefone": item["phone"],
+                }
+                for item in items
+            ]
+
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _write_json_report(items: list[dict[str, Any]], output_file: Path, report_type: str) -> None:
+    """Escreve relatório em formato JSON."""
+    report = {
+        "generated_at": datetime.now().isoformat(),
+        "report_type": report_type,
+        "total": len(items),
+        "items": items,
+    }
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+
+
+def _write_txt_report(items: list[dict[str, Any]], output_file: Path, report_type: str) -> None:
+    """Escreve relatório em formato TXT formatado."""
+    lines: list[str] = []
+
+    if report_type == "groups_channels":
+        title = "RELATÓRIO DE GRUPOS E CANAIS"
+    else:
+        title = "RELATÓRIO DE CONTATOS"
+
+    lines.append("=" * 50)
+    lines.append(title)
+    lines.append(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}")
+    lines.append(f"Total: {len(items)} item(ns)")
+    lines.append("=" * 50)
+    lines.append("")
+
+    if not items:
+        lines.append("(Nenhum item encontrado)")
+    else:
+        for i, item in enumerate(items, 1):
+            if report_type == "groups_channels":
+                lines.append(f"[{i}] {item['type']} - {item['title']}")
+                if item["username"]:
+                    lines.append(f"    Username: {item['username']}")
+                lines.append(f"    ID: {item['id']}")
+                lines.append(f"    Participantes: {item['participants_count']}")
+                if item["type"] == "Channel":
+                    lines.append(f"    Megagrupo: {'Sim' if item['is_megagroup'] else 'Não'}")
+                    lines.append(f"    Broadcast: {'Sim' if item['is_broadcast'] else 'Não'}")
+                lines.append(f"    Criador: {'Sim' if item['creator'] else 'Não'}")
+                lines.append(f"    Admin: {'Sim' if item['admin_rights'] else 'Não'}")
+                if item["date"]:
+                    lines.append(f"    Data Criação: {item['date']}")
+            else:  # contacts
+                lines.append(f"[{i}] {item['name']}")
+                if item["username"]:
+                    lines.append(f"    Username: {item['username']}")
+                lines.append(f"    ID: {item['id']}")
+                lines.append(f"    Bot: {'Sim' if item['is_bot'] else 'Não'}")
+                lines.append(f"    Verificado: {'Sim' if item['is_verified'] else 'Não'}")
+                lines.append(f"    Premium: {'Sim' if item['is_premium'] else 'Não'}")
+                if item["status"]:
+                    lines.append(f"    Status: {item['status']}")
+                if item["phone"]:
+                    lines.append(f"    Telefone: {item['phone']}")
+
+            lines.append("")
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+async def generate_all_reports(
+    client: TelegramClient,
+    output_format: str = "csv",
+) -> dict[str, str]:
+    """Gera todos os relatórios disponíveis.
+
+    Args:
+        client: Cliente Telethon conectado.
+        output_format: Formato dos relatórios (csv, json ou txt).
+
+    Returns:
+        Dicionário com tipo de relatório e caminho do arquivo gerado.
+    """
+    results = {}
+
+    # Gerar relatório de grupos e canais
+    groups_path = await generate_groups_channels_report(client, output_format=output_format)
+    results["groups_channels"] = groups_path
+
+    # Gerar relatório de contatos
+    contacts_path = await generate_contacts_report(client, output_format=output_format)
+    results["contacts"] = contacts_path
+
+    return results
+</file>
+
+<file path="tests/__init__.py">
+"""Testes para CleanTelegram."""
+</file>
+
+<file path="tests/conftest.py">
+"""Configuração de testes para CleanTelegram."""
+
+import sys
+from pathlib import Path
+
+# Adicionar src/ ao path ANTES de qualquer outra coisa para importar o módulo correto
+src_path = Path(__file__).parent.parent / "src"
+if src_path.exists() and src_path.is_dir():
+    sys.path.insert(0, str(src_path))
+else:
+    raise RuntimeError(f"Diretório src/ não encontrado em {src_path}. Verifique a estrutura do projeto.")
+
+# Remover o diretório raiz do path para evitar conflito
+root_path = Path(__file__).parent.parent
+root_path_str = str(root_path)
+# Remover TODAS as ocorrências, não apenas a primeira
+sys.path = [p for p in sys.path if p != root_path_str]
+</file>
+
+<file path="tests/test_backup_cloud.py">
+"""Testes para funcionalidade de backup para Cloud Chat (Saved Messages)."""
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import AsyncIterator, Generic, TypeVar
+from unittest import mock
+
+import pytest
+
+from clean_telegram.backup import (
+    backup_group_with_media,
+    send_backup_to_cloud,
+)
+
+
+T = TypeVar('T')
+
+
+class AsyncIteratorMock(Generic[T]):
+    """Helper para criar async iterators em testes."""
+
+    def __init__(self, items: list[T]):
+        self.items = items
+        self.index = 0
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self
+
+    async def __anext__(self) -> T:
+        if self.index >= len(self.items):
+            raise StopAsyncIteration
+        item = self.items[self.index]
+        self.index += 1
+        return item
+
+
+# =============================================================================
+# Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def mock_chat_entity():
+    """Cria um mock de entidade de chat."""
+    chat = mock.Mock()
+    chat.id = -1001234567890
+    chat.title = "Grupo de Teste"
+    return chat
+
+
+@pytest.fixture
+def mock_telethon_client(tmp_path):
+    """Cria um mock de TelegramClient com comportamentos realistas."""
+    client = mock.AsyncMock()
+
+    # Mock de get_me
+    async def mock_get_me():
+        me = mock.Mock()
+        me.id = 999888
+        me.username = "testuser"
+        me.first_name = "Test"
+        me.last_name = "User"
+        return me
+
+    client.get_me = mock_get_me
+
+    # Mock de iter_messages (retorna lista vazia por padrão)
+    def mock_iter_messages(*args, **kwargs):
+        return AsyncIteratorMock([])
+
+    client.iter_messages = mock_iter_messages
+
+    # Mock de iter_participants (retorna lista vazia por padrão)
+    def mock_iter_participants(*args, **kwargs):
+        return AsyncIteratorMock([])
+
+    client.iter_participants = mock_iter_participants
+
+    # Mock de send_file (para cloud chat)
+    sent_files = []
+
+    async def mock_send_file(entity, file, caption=None, **kwargs):
+        """Mock que rastreia arquivos enviados para cloud chat."""
+        sent_files.append({
+            "entity": entity,
+            "file": file,
+            "caption": caption,
+        })
+        msg = mock.Mock()
+        msg.id = len(sent_files)
+        return msg
+
+    client.send_file = mock_send_file
+
+    # Mock de send_message (para resumo)
+    sent_messages = []
+
+    async def mock_send_message(entity, message, **kwargs):
+        """Mock que rastreia mensagens enviadas."""
+        sent_messages.append({
+            "entity": entity,
+            "message": message,
+        })
+        msg = mock.Mock()
+        msg.id = len(sent_messages)
+        return msg
+
+    client.send_message = mock_send_message
+
+    # Armazenar referências para verificação nos testes
+    client._test_sent_files = sent_files
+    client._test_sent_messages = sent_messages
+
+    return client
+
+
+@pytest.fixture
+def mock_telethon_client_with_messages(mock_telethon_client):
+    """Cria um client com mensagens de exemplo."""
+    # Mock de mensagens
+    class MockMessage:
+        def __init__(self, msg_id, date, text=None, sender_id=None, media=None):
+            self.id = msg_id
+            self.date = date
+            self.text = text
+            self.sender_id = sender_id
+            self.media = media
+            self.sender = None
+            self.reply_to = None
+
+    def mock_iter_messages(*args, **kwargs):
+        messages = [
+            MockMessage(1, datetime(2024, 1, 1, 10, 0), "Olá!", 111),
+            MockMessage(2, datetime(2024, 1, 1, 10, 5), "Como vai?", 222),
+            MockMessage(3, datetime(2024, 1, 1, 10, 10), "Tudo bem?", 111),
+        ]
+        return AsyncIteratorMock(messages)
+
+    mock_telethon_client.iter_messages = mock_iter_messages
+    return mock_telethon_client
+
+
+@pytest.fixture
+def mock_telethon_client_with_participants(mock_telethon_client):
+    """Cria um client com participantes de exemplo."""
+    # Mock de participantes
+    class MockParticipant:
+        def __init__(self, user_id, first_name, last_name="", username=None):
+            self.user = self
+            self.id = user_id
+            self.first_name = first_name
+            self.last_name = last_name
+            self.username = username
+            self.bot = False
+            self.verified = False
+            self.premium = False
+            self.phone = None
+            self.status = None
+            self.participant = None
+
+    def mock_iter_participants(*args, **kwargs):
+        participants = [
+            MockParticipant(111, "João", "Silva", "joaosilva"),
+            MockParticipant(222, "Maria", "Santos", "mariasantos"),
+            MockParticipant(333, "Pedro", "", "pedro"),
+        ]
+        return AsyncIteratorMock(participants)
+
+    mock_telethon_client.iter_participants = mock_iter_participants
+    return mock_telethon_client
+
+
+@pytest.fixture
+def mock_client_with_both(mock_telethon_client_with_messages, mock_telethon_client_with_participants):
+    """Client completo com mensagens e participantes."""
+    # Criar novo client combinando ambos
+    combined = mock.AsyncMock()
+
+    # Configurar send_file e send_message igual ao client de mensagens
+    sent_files = []
+    sent_messages = []
+
+    async def mock_send_file(entity, file, caption=None, **kwargs):
+        sent_files.append({"entity": entity, "file": file, "caption": caption})
+        msg = mock.Mock()
+        msg.id = len(sent_files)
+        return msg
+
+    async def mock_send_message(entity, message, **kwargs):
+        sent_messages.append({"entity": entity, "message": message})
+        msg = mock.Mock()
+        msg.id = len(sent_messages)
+        return msg
+
+    combined.send_file = mock_send_file
+    combined.send_message = mock_send_message
+
+    # Armazenar referências para verificação
+    combined._test_sent_files = sent_files
+    combined._test_sent_messages = sent_messages
+
+    # Copiar atributos importantes
+    for attr in ['get_me', 'iter_messages']:
+        setattr(combined, attr, getattr(mock_telethon_client_with_messages, attr))
+
+    # Sobrescrever iter_participants com o do client de participantes
+    combined.iter_participants = mock_telethon_client_with_participants.iter_participants
+
+    return combined
+
+
+@pytest.fixture
+def temp_backup_dir(tmp_path):
+    """Cria diretório temporário para backups."""
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir(exist_ok=True)
+    return str(backup_dir)
+
+
+# =============================================================================
+# Testes: send_backup_to_cloud
+# =============================================================================
+
+
+class TestSendBackupToCloud:
+    """Testes da função send_backup_to_cloud."""
+
+    @pytest.mark.asyncio
+    async def test_should_send_file_to_saved_messages(self, mock_telethon_client, tmp_path):
+        """Testa envio de arquivo para Saved Messages ('me')."""
+        # Criar arquivo de teste
+        test_file = tmp_path / "test_backup.json"
+        test_file.write_text('{"test": "data"}')
+
+        await send_backup_to_cloud(
+            mock_telethon_client,
+            str(test_file),
+            "📦 Test Backup"
+        )
+
+        # Verificar que send_file foi chamado com 'me' como entidade
+        assert len(mock_telethon_client._test_sent_files) == 1
+        sent = mock_telethon_client._test_sent_files[0]
+        assert sent["entity"] == "me"
+        assert sent["file"] == str(test_file)
+        assert sent["caption"] == "📦 Test Backup"
+
+    @pytest.mark.asyncio
+    async def test_should_include_caption_with_emoji(self, mock_telethon_client, tmp_path):
+        """Testa que caption inclui emojis para organização."""
+        test_file = tmp_path / "test.json"
+        test_file.write_text('{}')
+
+        caption = "📦 Backup: Grupo Teste - Mensagens (100 msgs)"
+        await send_backup_to_cloud(mock_telethon_client, str(test_file), caption)
+
+        sent = mock_telethon_client._test_sent_files[0]
+        assert "📦" in sent["caption"]
+        assert "Grupo Teste" in sent["caption"]
+        assert "100 msgs" in sent["caption"]
+
+
+# =============================================================================
+# Testes: backup_group_with_media com send_to_cloud
+# =============================================================================
+
+
+class TestBackupGroupWithCloud:
+    """Testes de backup com envio para Cloud Chat."""
+
+    @pytest.mark.asyncio
+    async def test_should_send_json_files_to_cloud(
+        self,
+        mock_client_with_both,
+        mock_chat_entity,
+        temp_backup_dir,
+    ):
+        """Testa envio de arquivos JSON para Cloud Chat."""
+        results = await backup_group_with_media(
+            mock_client_with_both,
+            mock_chat_entity,
+            temp_backup_dir,
+            formats="json",
+            send_to_cloud=True,
+        )
+
+        # Verificar que arquivos foram enviados
+        assert results["cloud_backup"] is True
+        assert len(results["cloud_files"]) == 2  # messages_json, participants_json
+        assert "messages_json" in results["cloud_files"]
+        assert "participants_json" in results["cloud_files"]
+
+        # Verificar captions
+        sent_files = mock_client_with_both._test_sent_files
+        captions = [f["caption"] for f in sent_files]
+
+        assert any("📦" in c and "Mensagens" in c for c in captions)
+        assert any("👥" in c and "Participantes" in c for c in captions)
+
+    @pytest.mark.asyncio
+    async def test_should_send_csv_files_to_cloud(
+        self,
+        mock_client_with_both,
+        mock_chat_entity,
+        temp_backup_dir,
+    ):
+        """Testa envio de arquivos CSV para Cloud Chat."""
+        results = await backup_group_with_media(
+            mock_client_with_both,
+            mock_chat_entity,
+            temp_backup_dir,
+            formats="csv",
+            send_to_cloud=True,
+        )
+
+        assert results["cloud_backup"] is True
+        assert len(results["cloud_files"]) == 2  # messages_csv, participants_csv
+
+        # Verificar que captions mencionam CSV
+        sent_files = mock_client_with_both._test_sent_files
+        captions = [f["caption"] for f in sent_files]
+
+        assert any("CSV" in c for c in captions)
+
+    @pytest.mark.asyncio
+    async def test_should_send_all_formats_to_cloud(
+        self,
+        mock_client_with_both,
+        mock_chat_entity,
+        temp_backup_dir,
+    ):
+        """Testa envio de todos os formatos (JSON e CSV) para Cloud Chat."""
+        results = await backup_group_with_media(
+            mock_client_with_both,
+            mock_chat_entity,
+            temp_backup_dir,
+            formats="both",
+            send_to_cloud=True,
+        )
+
+        # Deve enviar 4 arquivos: 2 JSON + 2 CSV
+        assert results["cloud_backup"] is True
+        assert len(results["cloud_files"]) == 4
+
+    @pytest.mark.asyncio
+    async def test_should_send_summary_message_to_cloud(
+        self,
+        mock_client_with_both,
+        mock_chat_entity,
+        temp_backup_dir,
+    ):
+        """Testa envio de mensagem de resumo para Cloud Chat."""
+        results = await backup_group_with_media(
+            mock_client_with_both,
+            mock_chat_entity,
+            temp_backup_dir,
+            formats="json",
+            send_to_cloud=True,
+        )
+
+        # Verificar que mensagem de resumo foi enviada
+        sent_messages = mock_client_with_both._test_sent_messages
+        assert len(sent_messages) == 1
+
+        summary = sent_messages[0]["message"]
+        assert "📊" in summary
+        assert "Resumo do Backup" in summary
+        assert "Grupo de Teste" in summary
+        assert "Mensagens:" in summary
+        assert "Participantes:" in summary
+        assert "Saved Messages" in summary
+
+    @pytest.mark.asyncio
+    async def test_should_not_send_to_cloud_when_disabled(
+        self,
+        mock_client_with_both,
+        mock_chat_entity,
+        temp_backup_dir,
+    ):
+        """Testa que nada é enviado para Cloud Chat quando send_to_cloud=False."""
+        results = await backup_group_with_media(
+            mock_client_with_both,
+            mock_chat_entity,
+            temp_backup_dir,
+            formats="json",
+            send_to_cloud=False,
+        )
+
+        # Verificar que nada foi enviado
+        assert results.get("cloud_backup") is not True
+        assert "cloud_files" not in results
+        assert len(mock_client_with_both._test_sent_files) == 0
+        assert len(mock_client_with_both._test_sent_messages) == 0
+
+    @pytest.mark.asyncio
+    async def test_should_include_media_count_in_summary(
+        self,
+        mock_client_with_both,
+        mock_chat_entity,
+        temp_backup_dir,
+    ):
+        """Testa que resumo inclui contagem de mídia quando baixada."""
+        # Mock de download_media_from_chat
+        async def mock_download(*args, **kwargs):
+            return {
+                "photo": 5,
+                "video": 2,
+                "total": 7,
+            }
+
+        with mock.patch(
+            "clean_telegram.backup.download_media_from_chat",
+            side_effect=mock_download
+        ):
+            results = await backup_group_with_media(
+                mock_client_with_both,
+                mock_chat_entity,
+                temp_backup_dir,
+                formats="json",
+                download_media=True,
+                send_to_cloud=True,
+            )
+
+        # Verificar resumo inclui mídia
+        summary = mock_client_with_both._test_sent_messages[0]["message"]
+        assert "Arquivos de mídia:" in summary
+        assert "7" in summary
+
+    @pytest.mark.asyncio
+    async def test_should_skip_nonexistent_files(
+        self,
+        mock_telethon_client,
+        mock_chat_entity,
+        temp_backup_dir,
+    ):
+        """Testa que arquivos inexistentes são ignorados no envio para cloud."""
+        # Adicionar send_file mock ao client
+        sent_files = []
+
+        async def mock_send_file(entity, file, caption=None, **kwargs):
+            sent_files.append({"entity": entity, "file": file, "caption": caption})
+            msg = mock.Mock()
+            msg.id = len(sent_files)
+            return msg
+
+        async def mock_send_message(entity, message, **kwargs):
+            msg = mock.Mock()
+            msg.id = 1
+            return msg
+
+        mock_telethon_client.send_file = mock_send_file
+        mock_telethon_client.send_message = mock_send_message
+
+        # Simular situação onde arquivo JSON não foi criado (retorna vazio)
+        # As funções de exportação não criam arquivos, então não haverá arquivos para enviar
+        async def mock_export_msgs(client, entity, path):
+            # Não cria arquivo
+            return 0
+
+        async def mock_export_parts(client, entity, path):
+            # Não cria arquivo
+            return 0
+
+        with mock.patch("clean_telegram.backup.export_messages_to_json", side_effect=mock_export_msgs):
+            with mock.patch("clean_telegram.backup.export_participants_to_json", side_effect=mock_export_parts):
+                results = await backup_group_with_media(
+                    mock_telethon_client,
+                    mock_chat_entity,
+                    temp_backup_dir,
+                    formats="json",
+                    send_to_cloud=True,
+                )
+
+        # Como os arquivos não foram criados, nenhum arquivo de backup foi enviado
+        # Apenas a mensagem de resumo pode ter sido enviada
+        # Verificar que cloud_files está vazio (nenhum arquivo de backup enviado)
+        assert results.get("cloud_files", []) == [] or len(results.get("cloud_files", [])) == 0
+
+
+# =============================================================================
+# Testes de Integração: CLI
+# =============================================================================
+
+
+class TestBackupCloudCLIIntegration:
+    """Testes de integração do CLI com backup para cloud."""
+
+    @pytest.mark.asyncio
+    async def test_cli_argument_backup_to_cloud(
+        self,
+        mock_telethon_client,
+        mock_chat_entity,
+        temp_backup_dir,
+        monkeypatch,
+    ):
+        """Testa que argumento --backup-to-cloud é processado corretamente."""
+        from clean_telegram import cli
+
+        # Mock environment
+        monkeypatch.setenv("API_ID", "12345")
+        monkeypatch.setenv("API_HASH", "test_hash")
+
+        # Mock parse_args com backup_to_cloud=True
+        args = mock.Mock()
+        args.backup_group = "-1001234567890"
+        args.export_members = None
+        args.export_messages = None
+        args.backup_format = "json"
+        args.backup_output = temp_backup_dir
+        args.download_media = False
+        args.media_types = None
+        args.backup_to_cloud = True  # Argumento sendo testado
+
+        # Mock client.get_entity
+        async def mock_get_entity(chat_id):
+            return mock_chat_entity
+
+        mock_telethon_client.get_entity = mock_get_entity
+
+        # Mock exports para criar arquivos
+        test_msg_file = Path(temp_backup_dir) / "Grupo_de_Teste_messages_*.json"
+
+        async def mock_export_msgs(client, entity, path):
+            # Criar arquivo JSON
+            from pathlib import Path
+            import json
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            with open(path, 'w') as f:
+                json.dump({"messages": []}, f)
+            return 0
+
+        async def mock_export_parts(client, entity, path):
+            from pathlib import Path
+            import json
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            with open(path, 'w') as f:
+                json.dump({"participants": []}, f)
+            return 0
+
+        with mock.patch("clean_telegram.backup.export_messages_to_json", side_effect=mock_export_msgs):
+            with mock.patch("clean_telegram.backup.export_participants_to_json", side_effect=mock_export_parts):
+                await cli.run_backup(args, mock_telethon_client)
+
+        # Verificar que arquivos foram enviados para cloud
+        assert len(mock_telethon_client._test_sent_files) > 0
+
+
+# =============================================================================
+# Testes: Cenários de Erro
+# =============================================================================
+
+
+class TestBackupCloudErrorHandling:
+    """Testes de tratamento de erros no backup para cloud."""
+
+    @pytest.mark.asyncio
+    async def test_should_handle_send_file_error_gracefully(
+        self,
+        mock_telethon_client,
+        mock_chat_entity,
+        temp_backup_dir,
+    ):
+        """Testa que erro ao enviar arquivo é tratado adequadamente."""
+        # Mock para criar arquivos locais
+        async def mock_export_msgs(client, entity, path):
+            from pathlib import Path
+            import json
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            with open(path, 'w') as f:
+                json.dump({"messages": []}, f)
+            return 0
+
+        async def mock_export_parts(client, entity, path):
+            from pathlib import Path
+            import json
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            with open(path, 'w') as f:
+                json.dump({"participants": []}, f)
+            return 0
+
+        # Mock send_file que levanta exceção
+        async def mock_send_file_error(*args, **kwargs):
+            raise Exception("Network error")
+
+        mock_telethon_client.send_file = mock_send_file_error
+
+        with mock.patch("clean_telegram.backup.export_messages_to_json", side_effect=mock_export_msgs):
+            with mock.patch("clean_telegram.backup.export_participants_to_json", side_effect=mock_export_parts):
+                # A função deve propagar o erro
+                with pytest.raises(Exception, match="Network error"):
+                    await backup_group_with_media(
+                        mock_telethon_client,
+                        mock_chat_entity,
+                        temp_backup_dir,
+                        formats="json",
+                        send_to_cloud=True,
+                    )
+
+    @pytest.mark.asyncio
+    async def test_should_caption_with_special_characters(
+        self,
+        mock_client_with_both,
+        temp_backup_dir,
+    ):
+        """Testa caption com caracteres especiais no nome do grupo."""
+        # Grupo com caracteres especiais
+        chat = mock.Mock()
+        chat.id = -1001234567890
+        chat.title = "Grupo 🎉 Teste & Coisa (2024)"
+
+        results = await backup_group_with_media(
+            mock_client_with_both,
+            chat,
+            temp_backup_dir,
+            formats="json",
+            send_to_cloud=True,
+        )
+
+        # Deve completar sem erro
+        assert results["cloud_backup"] is True
+</file>
+
+<file path="tests/test_cli_auth.py">
+"""Testes de autenticação do CLI (modo usuário e modo bot)."""
+
+from unittest import mock
+
+import pytest
+from telethon.errors import RPCError
+
+from clean_telegram import cli
+
+
+def get_mock_auth_config(
+    overrides: dict[str, object] | None = None,
+) -> cli.AuthConfig:
+    """Factory de AuthConfig com defaults seguros."""
+    data: dict[str, object] = {
+        "mode": "user",
+        "session_name": "session",
+        "bot_token": None,
+    }
+    if overrides:
+        data.update(overrides)
+    return cli.AuthConfig(**data)
+
+
+def get_mock_rpc_error(message: str = "CHAT_ADMIN_REQUIRED", code: int = 400) -> RPCError:
+    """Factory de RPCError para cenários de erro Telegram."""
+    return RPCError(None, message, code)
+
+
+class TestResolveAuthConfig:
+    def test_should_use_user_mode_by_default(self, monkeypatch):
+        monkeypatch.delenv("BOT_TOKEN", raising=False)
+        monkeypatch.delenv("SESSION_NAME", raising=False)
+        monkeypatch.delenv("BOT_SESSION_NAME", raising=False)
+
+        auth_config = cli.resolve_auth_config()
+
+        assert auth_config.mode == "user"
+        assert auth_config.session_name == "session"
+        assert auth_config.bot_token is None
+
+    def test_should_prioritize_bot_mode_when_bot_token_exists(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "123456:abc-token")
+        monkeypatch.setenv("BOT_SESSION_NAME", "my_bot_session")
+        monkeypatch.setenv("SESSION_NAME", "user_session_should_be_ignored")
+
+        auth_config = cli.resolve_auth_config()
+
+        assert auth_config.mode == "bot"
+        assert auth_config.session_name == "my_bot_session"
+        assert auth_config.bot_token == "123456:abc-token"
+
+    def test_should_use_default_bot_session_name_when_not_provided(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "999:bot-token")
+        monkeypatch.delenv("BOT_SESSION_NAME", raising=False)
+
+        auth_config = cli.resolve_auth_config()
+
+        assert auth_config.mode == "bot"
+        assert auth_config.session_name == "bot_session"
+
+
+class TestCreateClient:
+    def test_should_create_client_with_bot_session_when_bot_token_exists(self, monkeypatch):
+        monkeypatch.setenv("API_ID", "12345")
+        monkeypatch.setenv("API_HASH", "hash123")
+        monkeypatch.setenv("BOT_TOKEN", "999:bot-token")
+        monkeypatch.setenv("BOT_SESSION_NAME", "bot_session_custom")
+
+        telegram_client_ctor = mock.Mock(return_value=mock.sentinel.client)
+        monkeypatch.setattr(cli, "TelegramClient", telegram_client_ctor)
+
+        client, auth_config = cli.create_client()
+
+        assert client is mock.sentinel.client
+        assert auth_config.mode == "bot"
+        assert auth_config.session_name == "bot_session_custom"
+        telegram_client_ctor.assert_called_once_with(
+            "bot_session_custom", 12345, "hash123"
+        )
+
+    def test_should_create_client_with_user_session_without_bot_token(self, monkeypatch):
+        monkeypatch.setenv("API_ID", "67890")
+        monkeypatch.setenv("API_HASH", "hash456")
+        monkeypatch.setenv("SESSION_NAME", "legacy_user_session")
+        monkeypatch.delenv("BOT_TOKEN", raising=False)
+
+        telegram_client_ctor = mock.Mock(return_value=mock.sentinel.user_client)
+        monkeypatch.setattr(cli, "TelegramClient", telegram_client_ctor)
+
+        client, auth_config = cli.create_client()
+
+        assert client is mock.sentinel.user_client
+        assert auth_config.mode == "user"
+        assert auth_config.session_name == "legacy_user_session"
+        telegram_client_ctor.assert_called_once_with(
+            "legacy_user_session", 67890, "hash456"
+        )
+
+
+class TestStartClient:
+    @pytest.mark.asyncio
+    async def test_should_start_with_bot_token_in_bot_mode(self):
+        client = mock.AsyncMock()
+        auth_config = get_mock_auth_config(
+            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
+        )
+
+        await cli.start_client(client, auth_config)
+
+        client.start.assert_awaited_once_with(bot_token="123:token")
+
+    @pytest.mark.asyncio
+    async def test_should_start_without_bot_token_in_user_mode(self):
+        client = mock.AsyncMock()
+        auth_config = get_mock_auth_config()
+
+        await cli.start_client(client, auth_config)
+
+        client.start.assert_awaited_once_with()
+
+
+class TestWarnBotPermissions:
+    def test_should_warn_for_clean_mode_in_bot_auth(self, caplog):
+        auth_config = get_mock_auth_config(
+            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
+        )
+
+        with caplog.at_level("WARNING"):
+            cli.warn_bot_permissions(
+                auth_config=auth_config,
+                is_clean_mode=True,
+                is_backup_mode=False,
+            )
+
+        assert "Modo bot ativo" in caplog.text
+
+    def test_should_warn_for_backup_mode_in_bot_auth(self, caplog):
+        auth_config = get_mock_auth_config(
+            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
+        )
+
+        with caplog.at_level("WARNING"):
+            cli.warn_bot_permissions(
+                auth_config=auth_config,
+                is_clean_mode=False,
+                is_backup_mode=True,
+            )
+
+        assert "Modo bot ativo" in caplog.text
+
+    def test_should_not_warn_for_reports_in_bot_auth(self, caplog):
+        auth_config = get_mock_auth_config(
+            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
+        )
+
+        with caplog.at_level("WARNING"):
+            cli.warn_bot_permissions(
+                auth_config=auth_config,
+                is_clean_mode=False,
+                is_backup_mode=False,
+            )
+
+        assert "Modo bot ativo" not in caplog.text
+
+    def test_should_not_warn_in_user_mode(self, caplog):
+        auth_config = get_mock_auth_config()
+
+        with caplog.at_level("WARNING"):
+            cli.warn_bot_permissions(
+                auth_config=auth_config,
+                is_clean_mode=True,
+                is_backup_mode=True,
+            )
+
+        assert "Modo bot ativo" not in caplog.text
+
+
+class TestFormatRpcError:
+    def test_should_return_bot_friendly_message_in_bot_mode(self):
+        error = get_mock_rpc_error()
+        auth_config = get_mock_auth_config(
+            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
+        )
+
+        message = cli.format_rpc_error(error, auth_config)
+
+        assert "Falha em modo bot" in message
+        assert "permissões necessárias" in message
+        assert "CHAT_ADMIN_REQUIRED" in message
+
+    def test_should_return_generic_message_in_user_mode(self):
+        error = get_mock_rpc_error("FLOOD_WAIT", 420)
+        auth_config = get_mock_auth_config()
+
+        message = cli.format_rpc_error(error, auth_config)
+
+        assert "Erro da API do Telegram" in message
+        assert "FLOOD_WAIT" in message
+</file>
+
+<file path="tests/test_interactive_backup.py">
+"""Testes do modo interativo para funcionalidade de backup."""
+
+from datetime import datetime
+from typing import AsyncIterator, Generic, TypeVar
+from unittest import mock
+
+import pytest
+
+from clean_telegram.interactive import interactive_backup
+
+
+T = TypeVar('T')
+
+
+class AsyncIteratorMock(Generic[T]):
+    """Helper para criar async iterators em testes."""
+
+    def __init__(self, items: list[T]):
+        self.items = items
+        self.index = 0
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self
+
+    async def __anext__(self) -> T:
+        if self.index >= len(self.items):
+            raise StopAsyncIteration
+        item = self.items[self.index]
+        self.index += 1
+        return item
+
+
+def create_async_mock(return_value):
+    """Cria um mock assíncrono que retorna o valor especificado."""
+    async def async_impl():
+        return return_value
+    return async_impl
+
+
+# =============================================================================
+# Testes: interactive_backup (básicos)
+# =============================================================================
+
+
+class TestInteractiveBackupBasic:
+    """Testes básicos da função interactive_backup."""
+
+    @pytest.mark.asyncio
+    async def test_should_cancel_when_no_chat_id(self):
+        """Testa cancelamento quando usuário não fornece chat_id."""
+        client = mock.AsyncMock()
+        get_entity_called = [False]
+
+        async def mock_get_entity(chat_id):
+            get_entity_called[0] = True
+            entity = mock.Mock()
+            entity.id = -1001234567890
+            entity.title = "Test Group"
+            return entity
+        client.get_entity = mock_get_entity
+
+        with mock.patch("clean_telegram.interactive.questionary") as mock_q:
+            # Criar um mock para ask_async que retorna string vazia
+            ask_mock = mock.AsyncMock(return_value="")
+            mock_q.text.return_value.ask_async = ask_mock
+            await interactive_backup(client)
+
+        # Verificar que get_entity não foi chamado (cancelou antes)
+        assert not get_entity_called[0]
+
+    @pytest.mark.asyncio
+    async def test_should_show_error_for_invalid_chat(self):
+        """Testa exibição de erro para chat inválido."""
+        client = mock.AsyncMock()
+
+        async def mock_get_me():
+            me = mock.Mock()
+            me.id = 999888
+            me.username = "testuser"
+            me.first_name = "Test"
+            return me
+        client.get_me = mock_get_me
+
+        async def mock_get_entity(chat_id):
+            raise ValueError("Chat not found")
+        client.get_entity = mock_get_entity
+
+        with mock.patch("clean_telegram.interactive.questionary") as mock_q:
+            ask_text_mock = mock.AsyncMock(return_value="@invalid")
+            ask_select_mock = mock.AsyncMock(return_value="json")
+            mock_q.text.return_value.ask_async = ask_text_mock
+            mock_q.select.return_value.ask_async = ask_select_mock
+            with mock.patch("builtins.print"):
+                await interactive_backup(client)
+
+    @pytest.mark.asyncio
+    async def test_should_cancel_when_no_format_selected(self):
+        """Testa cancelamento quando nenhum formato é selecionado."""
+        client = mock.AsyncMock()
+
+        async def mock_get_me():
+            me = mock.Mock()
+            me.id = 999888
+            me.username = "testuser"
+            me.first_name = "Test"
+            return me
+        client.get_me = mock_get_me
+
+        async def mock_get_entity(chat_id):
+            entity = mock.Mock()
+            entity.id = -1001234567890
+            entity.title = "Test Group"
+            return entity
+        client.get_entity = mock_get_entity
+
+        with mock.patch("clean_telegram.interactive.questionary") as mock_q:
+            ask_text_mock = mock.AsyncMock(return_value="@test")
+            ask_select_mock = mock.AsyncMock(return_value=None)  # Cancelado
+            mock_q.text.return_value.ask_async = ask_text_mock
+            mock_q.select.return_value.ask_async = ask_select_mock
+            with mock.patch("builtins.print"):
+                await interactive_backup(client)
+
+
+# =============================================================================
+# Testes: Menu Principal
+# =============================================================================
+
+
+class TestInteractiveMainMenu:
+    """Testes do menu principal com opção de backup."""
+
+    @pytest.mark.asyncio
+    async def test_main_menu_includes_backup_option(self):
+        """Testa que menu principal inclui opção de backup."""
+        from clean_telegram.interactive import interactive_main
+
+        client = mock.AsyncMock()
+
+        async def mock_get_me():
+            me = mock.Mock()
+            me.id = 999888
+            me.username = "testuser"
+            me.first_name = "Test"
+            me.last_name = "User"
+            return me
+        client.get_me = mock_get_me
+
+        call_count = [0]
+
+        async def mock_select_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return "backup"
+            return "exit"
+
+        with mock.patch("clean_telegram.interactive.questionary") as mock_q:
+            ask_select_mock = mock.AsyncMock(side_effect=mock_select_side_effect)
+            mock_q.select.return_value.ask_async = ask_select_mock
+            mock_q.press_any_key_to_continue.return_value.ask_async = mock.AsyncMock(return_value=None)
+            with mock.patch("clean_telegram.interactive.interactive_backup") as mock_backup:
+                with mock.patch("builtins.print"):
+                    await interactive_main(client)
+
+            # Verificar que a função de backup foi chamada
+            mock_backup.assert_called_once_with(client)
+
+    @pytest.mark.asyncio
+    async def test_menu_options(self):
+        """Testa que todas as opções esperadas estão no menu."""
+        from clean_telegram.interactive import interactive_main
+        import inspect
+
+        # Verificar que interactive_backup existe e pode ser chamada
+        assert callable(interactive_backup)
+
+        # Verificar a assinatura da função
+        sig = inspect.signature(interactive_backup)
+        assert "client" in sig.parameters
+</file>
+
+<file path="tests/test_reports.py">
+"""Testes unitários para o módulo de relatórios."""
+
+import json
+from datetime import datetime
+from pathlib import Path
+from unittest import mock
+
+import pytest
+
+from clean_telegram.reports import (
+    _format_status,
+    _write_csv_report,
+    _write_json_report,
+    _write_txt_report,
+    generate_contacts_report,
+    generate_groups_channels_report,
+)
+
+
+# Fixtures
+
+
+@pytest.fixture
+def mock_channel():
+    """Cria um mock de Channel do Telethon."""
+    channel = mock.Mock()
+    channel.id = 123456
+    channel.__class__.__name__ = "Channel"
+    return channel
+
+
+@pytest.fixture
+def mock_chat():
+    """Cria um mock de Chat do Telethon."""
+    chat = mock.Mock()
+    chat.id = 789012
+    chat.__class__.__name__ = "Chat"
+    return chat
+
+
+@pytest.fixture
+def mock_user():
+    """Cria um mock de User do Telethon."""
+    user = mock.Mock()
+    user.id = 999888
+    user.__class__.__name__ = "User"
+    return user
+
+
+@pytest.fixture
+def mock_client_with_channels():
+    """Cria um mock de TelegramClient com diálogos de grupos/canais."""
+    client = mock.AsyncMock()
+
+    # Criar classes simples para simular tipos do Telethon
+    class MockChannel:
+        id = 123456
+        username = "grupoteste"
+        participants_count = 150
+        megagroup = True
+        broadcast = False
+        creator = False
+        admin_rights = None
+        date = datetime(2024, 1, 15, 10, 30)
+
+    class MockChat:
+        id = 789012
+        participants_count = 25
+        creator = True
+
+    class MockUser:
+        id = 999888
+
+    # Mock de iter_dialogs
+    async def mock_iter_dialogs():
+        dialogs = []
+
+        # Channel (megagrupo)
+        dialog1 = mock.Mock()
+        dialog1.name = "Grupo de Teste"
+        dialog1.entity = MockChannel()
+        dialogs.append(dialog1)
+
+        # Chat (grupo legado)
+        dialog2 = mock.Mock()
+        dialog2.name = "Grupo Antigo"
+        dialog2.entity = MockChat()
+        dialogs.append(dialog2)
+
+        # User (deve ser ignorado)
+        dialog3 = mock.Mock()
+        dialog3.name = "João Silva"
+        dialog3.entity = MockUser()
+        dialogs.append(dialog3)
+
+        for d in dialogs:
+            yield d
+
+    client.iter_dialogs = mock_iter_dialogs
+    return client
+
+
+@pytest.fixture
+def mock_client_with_users():
+    """Cria um mock de TelegramClient com diálogos de usuários."""
+    client = mock.AsyncMock()
+
+    # Criar classes simples para simular tipos do Telethon
+    class MockUser1:
+        id = 111222
+        first_name = "Maria"
+        last_name = "Santos"
+        username = "mariasantos"
+        bot = False
+        verified = True
+        premium = False
+        phone = "+5511999999999"
+
+        class status:
+            was_online = datetime(2024, 2, 7, 14, 30)
+
+    class MockUser2:
+        id = 333444
+        first_name = "Bot"
+        last_name = "de Teste"
+        username = "testbot"
+        bot = True
+        verified = False
+        premium = False
+        phone = ""
+
+        class status:
+            expires = datetime.now().timestamp() + 3600
+
+    class MockChannel:
+        id = 555666
+        megagroup = True
+
+    # Mock de iter_dialogs
+    async def mock_iter_dialogs():
+        dialogs = []
+
+        # Usuário comum
+        dialog1 = mock.Mock()
+        dialog1.name = "Maria Santos"
+        dialog1.entity = MockUser1()
+        dialogs.append(dialog1)
+
+        # Bot
+        dialog2 = mock.Mock()
+        dialog2.name = "Bot de Teste"
+        dialog2.entity = MockUser2()
+        dialogs.append(dialog2)
+
+        # Channel (deve ser ignorado)
+        dialog3 = mock.Mock()
+        dialog3.name = "Canal de Notícias"
+        dialog3.entity = MockChannel()
+        dialogs.append(dialog3)
+
+        for d in dialogs:
+            yield d
+
+    client.iter_dialogs = mock_iter_dialogs
+    return client
+
+
+@pytest.fixture
+def temp_output_file(tmp_path):
+    """Cria um caminho temporário para arquivos de saída."""
+    return tmp_path / "test_output"
+
+
+# Testes das funções de escrita
+
+
+def test_write_csv_report_groups_channels(temp_output_file, mock_client_with_channels):
+    """Testa escrita de relatório CSV de grupos/canais."""
+    items = [
+        {
+            "type": "Channel",
+            "title": "Grupo de Teste",
+            "id": 123456,
+            "username": "@grupoteste",
+            "participants_count": 150,
+            "is_megagroup": True,
+            "is_broadcast": False,
+            "creator": False,
+            "admin_rights": False,
+            "date": "2024-01-15T10:30:00",
+        }
+    ]
+
+    _write_csv_report(items, temp_output_file, report_type="groups_channels")
+
+    assert temp_output_file.exists()
+
+    content = temp_output_file.read_text(encoding="utf-8")
+    lines = content.strip().split("\n")
+
+    # Verificar cabeçalho
+    assert "Tipo,Nome,ID,Username,Participantes" in lines[0]
+
+    # Verificar conteúdo
+    assert "Channel,Grupo de Teste,123456,@grupoteste,150" in lines[1]
+
+
+def test_write_csv_report_contacts(temp_output_file):
+    """Testa escrita de relatório CSV de contatos."""
+    items = [
+        {
+            "name": "Maria Santos",
+            "id": 111222,
+            "username": "@mariasantos",
+            "is_bot": False,
+            "is_verified": True,
+            "is_premium": False,
+            "status": "Último acesso: 07/02/2024 14:30",
+            "phone": "+5511999999999",
+        }
+    ]
+
+    _write_csv_report(items, temp_output_file, report_type="contacts")
+
+    assert temp_output_file.exists()
+
+    content = temp_output_file.read_text(encoding="utf-8")
+    lines = content.strip().split("\n")
+
+    # Verificar cabeçalho
+    assert "Nome,ID,Username,Bot,Verificado" in lines[0]
+
+    # Verificar conteúdo
+    assert "Maria Santos,111222,@mariasantos,Não,Sim" in lines[1]
+
+
+def test_write_csv_report_empty(temp_output_file):
+    """Testa escrita de relatório CSV vazio."""
+    _write_csv_report([], temp_output_file, report_type="groups_channels")
+
+    assert temp_output_file.exists()
+
+    content = temp_output_file.read_text(encoding="utf-8")
+    lines = content.strip().split("\n")
+
+    # Deve ter apenas o cabeçalho
+    assert len(lines) == 1
+    assert "Tipo" in lines[0]
+
+
+def test_write_json_report(temp_output_file):
+    """Testa escrita de relatório JSON."""
+    items = [
+        {
+            "type": "Channel",
+            "title": "Grupo de Teste",
+            "id": 123456,
+        }
+    ]
+
+    _write_json_report(items, temp_output_file, report_type="groups_channels")
+
+    assert temp_output_file.exists()
+
+    with open(temp_output_file, encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert data["report_type"] == "groups_channels"
+    assert data["total"] == 1
+    assert data["items"][0]["title"] == "Grupo de Teste"
+    assert "generated_at" in data
+
+
+def test_write_txt_report(temp_output_file):
+    """Testa escrita de relatório TXT formatado."""
+    items = [
+        {
+            "type": "Channel",
+            "title": "Grupo de Teste",
+            "id": 123456,
+            "username": "@grupoteste",
+            "participants_count": 150,
+            "is_megagroup": True,
+            "is_broadcast": False,
+            "creator": False,
+            "admin_rights": False,
+            "date": "2024-01-15T10:30:00",
+        }
+    ]
+
+    _write_txt_report(items, temp_output_file, report_type="groups_channels")
+
+    assert temp_output_file.exists()
+
+    content = temp_output_file.read_text(encoding="utf-8")
+
+    assert "RELATÓRIO DE GRUPOS E CANAIS" in content
+    assert "[1] Channel - Grupo de Teste" in content
+    assert "Username: @grupoteste" in content
+    assert "ID: 123456" in content
+    assert "Participantes: 150" in content
+
+
+def test_write_txt_report_empty(temp_output_file):
+    """Testa escrita de relatório TXT vazio."""
+    _write_txt_report([], temp_output_file, report_type="groups_channels")
+
+    assert temp_output_file.exists()
+
+    content = temp_output_file.read_text(encoding="utf-8")
+
+    assert "RELATÓRIO DE GRUPOS E CANAIS" in content
+    assert "(Nenhum item encontrado)" in content
+
+
+# Testes da função de formatação de status
+
+
+def test_format_status_with_was_online():
+    """Testa formatação de status com was_online."""
+    status = mock.Mock()
+    status.was_online = datetime(2024, 2, 7, 14, 30)
+
+    result = _format_status(status)
+
+    assert result == "07/02/2024 14:30"
+
+
+def test_format_status_without_was_online():
+    """Testa formatação de status sem was_online."""
+    status = mock.Mock()
+    delattr(status, "was_online")
+
+    result = _format_status(status)
+
+    assert result == "Desconhecido"
+
+
+# Testes das funções principais (com mocks)
+
+
+@pytest.mark.asyncio
+async def test_generate_groups_channels_report_csv(mock_client_with_channels, tmp_path):
+    """Testa geração de relatório CSV de grupos/canais."""
+    output_path = tmp_path / "test_groups.csv"
+
+    result = await generate_groups_channels_report(
+        mock_client_with_channels,
+        output_path=str(output_path),
+        output_format="csv",
+    )
+
+    assert result == str(output_path)
+    assert output_path.exists()
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "Grupo de Teste" in content
+    assert "Grupo Antigo" in content
+
+
+@pytest.mark.asyncio
+async def test_generate_groups_channels_report_json(mock_client_with_channels, tmp_path):
+    """Testa geração de relatório JSON de grupos/canais."""
+    output_path = tmp_path / "test_groups.json"
+
+    result = await generate_groups_channels_report(
+        mock_client_with_channels,
+        output_path=str(output_path),
+        output_format="json",
+    )
+
+    assert result == str(output_path)
+    assert output_path.exists()
+
+    with open(output_path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert data["total"] == 2  # Channel + Chat (User é ignorado)
+    assert data["items"][0]["title"] == "Grupo de Teste"
+
+
+@pytest.mark.asyncio
+async def test_generate_groups_channels_report_txt(mock_client_with_channels, tmp_path):
+    """Testa geração de relatório TXT de grupos/canais."""
+    output_path = tmp_path / "test_groups.txt"
+
+    result = await generate_groups_channels_report(
+        mock_client_with_channels,
+        output_path=str(output_path),
+        output_format="txt",
+    )
+
+    assert result == str(output_path)
+    assert output_path.exists()
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "RELATÓRIO DE GRUPOS E CANAIS" in content
+    assert "Grupo de Teste" in content
+
+
+@pytest.mark.asyncio
+async def test_generate_groups_channels_report_default_path(mock_client_with_channels, tmp_path, monkeypatch):
+    """Testa geração de relatório com caminho padrão (timestamp)."""
+    # Mudar diretório de trabalho para tmp_path
+    monkeypatch.chdir(tmp_path)
+
+    result = await generate_groups_channels_report(
+        mock_client_with_channels,
+        output_path=None,
+        output_format="csv",
+    )
+
+    assert result.startswith("relatorios/groups_channels_")
+    assert result.endswith(".csv")
+
+    # Verificar que o arquivo foi criado
+    output_file = Path(result)
+    assert output_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_generate_contacts_report_csv(mock_client_with_users, tmp_path):
+    """Testa geração de relatório CSV de contatos."""
+    output_path = tmp_path / "test_contacts.csv"
+
+    result = await generate_contacts_report(
+        mock_client_with_users,
+        output_path=str(output_path),
+        output_format="csv",
+    )
+
+    assert result == str(output_path)
+    assert output_path.exists()
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "Maria Santos" in content
+    assert "Bot de Teste" in content
+
+
+@pytest.mark.asyncio
+async def test_generate_contacts_report_json(mock_client_with_users, tmp_path):
+    """Testa geração de relatório JSON de contatos."""
+    output_path = tmp_path / "test_contacts.json"
+
+    result = await generate_contacts_report(
+        mock_client_with_users,
+        output_path=str(output_path),
+        output_format="json",
+    )
+
+    assert result == str(output_path)
+    assert output_path.exists()
+
+    with open(output_path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert data["report_type"] == "contacts"
+    assert data["total"] == 2  # 2 usuários (Channel é ignorado)
+
+
+@pytest.mark.asyncio
+async def test_generate_contacts_report_txt(mock_client_with_users, tmp_path):
+    """Testa geração de relatório TXT de contatos."""
+    output_path = tmp_path / "test_contacts.txt"
+
+    result = await generate_contacts_report(
+        mock_client_with_users,
+        output_path=str(output_path),
+        output_format="txt",
+    )
+
+    assert result == str(output_path)
+    assert output_path.exists()
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "RELATÓRIO DE CONTATOS" in content
+    assert "Maria Santos" in content
+
+
+@pytest.mark.asyncio
+async def test_generate_groups_channels_report_invalid_format(mock_client_with_channels, tmp_path):
+    """Testa erro ao passar formato inválido."""
+    output_path = tmp_path / "test.invalid"
+
+    with pytest.raises(ValueError, match="Formato não suportado"):
+        await generate_groups_channels_report(
+            mock_client_with_channels,
+            output_path=str(output_path),
+            output_format="invalid",
+        )
+</file>
+
+<file path="pyproject.toml">
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clean-telegram"
+version = "1.1.0"
+description = "Script para limpar conta Telegram via Telethon"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "telethon==1.42.0",
+    "python-dotenv==1.2.1",
+    "questionary==2.1.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+</file>
+
+<file path="run_clean_telegram.py">
+"""CleanTelegram: script para limpar conta Telegram via Telethon.
+
+Funcionalidades:
+- Apagar históricos de conversa (usuários/bots)
+- Sair de grupos/canais
+- Gerar relatórios de grupos, canais e contatos
+
+Use com cuidado e teste primeiro com --dry-run.
+"""
+
+import sys
+from pathlib import Path
+
+# Adicionar src/ ao path para importar o módulo
+src_path = Path(__file__).parent / "src"
+sys.path.insert(0, str(src_path))
+
+from clean_telegram.cli import main
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+</file>
+
+<file path=".env.example">
+# Telegram API credentials (https://my.telegram.org)
+API_ID=123456
+API_HASH=your_api_hash_here
+
+# Optional: user session file name (default: session)
+SESSION_NAME=session
+
+# Optional: bot mode (if set, bot auth is used automatically)
+BOT_TOKEN=
+
+# Optional: bot session file name (default: bot_session)
+BOT_SESSION_NAME=bot_session
+</file>
+
+<file path=".gitignore">
+# Ambiente virtual
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Build e distribuição
+build/
+dist/
+*.egg-info/
+src/*.egg-info/
+*.egg
+
+# Variáveis de ambiente
+.env
+.env.local
+.env.*.local
+
+# Sessões do Telegram (NECOM commits sessões!)
+*.session
+*.session-journal
+session*
+
+# Relatórios e estatísticas (NUNCA commits dados reais!)
+relatorios/
+reports/
+backups/
+backups/media/
+*.csv
+*.json
+!package.json
+!pyproject.json
+*.txt
+!README.md
+!requirements.txt
+!LICENSE
+
+# Mídia baixada
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.mp3
+*.ogg
+*.webp
+*.pdf
+*.doc
+*.docx
+*.zip
+*.tar
+*.gz
+
+# Testes e cobertura
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# IDEs e editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+
+# Outros
+*.bak
+*.tmp
+</file>
+
+<file path="requirements.txt">
+telethon==1.42.0
+python-dotenv==1.2.1
+questionary==2.1.1
+</file>
+
+<file path="README.md">
+# CleanTelegram
+
+**Tags:** telegram, telethon, python, cleanup, automation, privacy, destructive
+
+**Atenção:** este projeto automatiza ações destrutivas na sua conta Telegram (apagar conversas e sair de grupos/canais). Use **por sua conta e risco**. Recomendo testar primeiro com `--dry-run`.
+
+## O que faz
+
+- Apaga diálogos (conversas) com usuários/bots.
+- Sai de **grupos** e **canais**.
+- **Gera relatórios** de grupos, canais e contatos em CSV, JSON ou TXT.
+- **Backup completo** de grupos (mensagens + participantes).
+- **Exporta participantes** e mensagens de grupos específicos.
+
+> Observação: Telegram não tem um "bloquear grupo" de verdade (bloqueio é para **usuários**). Para grupos/canais, o equivalente prático é **sair**; e/ou **arquivar + silenciar**.
+
+## Requisitos
+
+- Python 3.10+
+- Credenciais do Telegram API: `API_ID` e `API_HASH`
+  - Pegue em: https://my.telegram.org
+- Opcional para modo bot: `BOT_TOKEN`
+  - Pegue com o BotFather no Telegram
+
+## Instalação
+
+### Com UV (recomendado)
+
+```bash
+# Instalar dependências
+uv sync
+
+# Criar arquivo .env
+cp .env.example .env
+```
+
+### Com pip/venv
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+Edite `.env` com `API_ID` e `API_HASH`.
+
+## Autenticação (usuário x bot)
+
+O projeto detecta automaticamente o modo de autenticação:
+
+- Se `BOT_TOKEN` estiver definido no `.env`, usa **modo bot**.
+- Se `BOT_TOKEN` não estiver definido, usa **modo usuário** (sessão tradicional do Telethon).
+
+Variáveis relacionadas:
+
+- `SESSION_NAME` (modo usuário, padrão: `session`)
+- `BOT_SESSION_NAME` (modo bot, padrão: `bot_session`)
+
+## Uso
+
+### Com UV
+
+```bash
+# Sincronizar dependências
+uv sync
+
+# Modo interativo
+uv run python -m clean_telegram --interactive
+
+# Modo bot (autodetectado por BOT_TOKEN no .env)
+uv run python -m clean_telegram --report groups
+
+# Limpeza (dry-run)
+uv run python -m clean_telegram --dry-run
+
+# Relatórios
+uv run python -m clean_telegram --report groups
+uv run python -m clean_telegram --report contacts
+uv run python -m clean_telegram --report all
+
+# Backup de grupo
+uv run python -m clean_telegram --backup-group -1001234567890
+
+# Exportar participantes
+uv run python -m clean_telegram --export-members @nome_do_grupo
+
+# Exportar mensagens
+uv run python -m clean_telegram --export-messages @nome_do_grupo
+
+# Help
+uv run python -m clean_telegram --help
+```
+
+### Sem UV (módulo Python)
+
+### Modo Interativo
+
+Para uma experiência mais amigável, use o modo interativo com menus visuais:
+
+```bash
+python -m clean_telegram --interactive
+# ou
+python -m clean_telegram -i
+# ou
+python run_clean_telegram.py -i
+```
+
+O modo interativo oferece:
+- 📋 Menus visuais para selecionar ações
+- ⚠️ Confirmações guiadas para ações destrutivas
+- 📊 Seleção de tipo e formato de relatórios
+- 📈 Visualização de estatísticas da conta
+
+### Limpeza de diálogos
+
+Dry-run (recomendado):
+
+```bash
+python run_clean_telegram.py --dry-run
+# ou
+python -m clean_telegram --dry-run
+```
+
+Executar de verdade:
+
+```bash
+python run_clean_telegram.py
+# ou
+python -m clean_telegram
+```
+
+### Geração de relatórios
+
+Gerar relatório de grupos e canais (CSV):
+
+```bash
+python -m clean_telegram --report groups
+```
+
+Gerar relatório de contatos (JSON):
+
+```bash
+python -m clean_telegram --report contacts --report-format json
+```
+
+Gerar todos os relatórios (TXT):
+
+```bash
+python -m clean_telegram --report all --report-format txt
+```
+
+Especificar caminho de saída:
+
+```bash
+python -m clean_telegram --report groups --report-output meu_relatorio.csv
+```
+
+### Backup e Exportação de Dados
+
+**Backup completo de um grupo:**
+
+```bash
+# Backup em JSON (padrão)
+uv run python -m clean_telegram --backup-group <chat_id>
+
+# Backup em CSV
+uv run python -m clean_telegram --backup-group <chat_id> --backup-format csv
+
+# Backup em ambos os formatos
+uv run python -m clean_telegram --backup-group <chat_id> --backup-format both
+```
+
+**Backup com MÍDIA:**
+
+```bash
+# Backup completo BAIXANDO ARQUIVOS DE MÍDIA
+uv run python -m clean_telegram --backup-group <chat_id> --download-media
+
+# Backup apenas de fotos e vídeos
+uv run python -m clean_telegram --backup-group <chat_id> --download-media --media-types photo,video
+
+# Backup com tipos específicos de mídia
+uv run python -m clean_telegram --backup-group <chat_id> --download-media --media-types photo,video,document
+```
+
+**Backup para Cloud Chat (Saved Messages):**
+
+```bash
+# Envia arquivos de backup para o Cloud Chat (Mensagens Salvas)
+uv run python -m clean_telegram --backup-group <chat_id> --backup-to-cloud
+
+# Backup com mídia + envio para cloud
+uv run python -m clean_telegram --backup-group <chat_id> --download-media --backup-to-cloud
+```
+
+> **☁️ O que é Cloud Chat?**
+>
+> O Cloud Chat do Telegram (Saved Messages / Mensagens Salvas) funciona como armazenamento pessoal na nuvem:
+> - Armazenamento generoso (até 4GB para usuários Premium, 2GB para grátis)
+> - Acessível de qualquer dispositivo com Telegram
+> - Arquivos persistem mesmo se apagados localmente
+> - Facilidade de acesso via app do Telegram
+> - Organização com captions descritivos usando emojis
+
+**Exportar apenas participantes ou mensagens:**
+
+```bash
+# Apenas participantes
+uv run python -m clean_telegram --export-members <chat_id>
+
+# Apenas mensagens (sem mídia)
+uv run python -m clean_telegram --export-messages <chat_id>
+```
+
+**Especificar diretório de saída:**
+
+```bash
+# Backup em CSV com mídia
+uv run python -m clean_telegram --backup-group <chat_id> --download-media --backup-format both --backup-output meu_backup/
+```
+
+**Identificadores de chat:**
+- ID numérico: `-1001234567890`
+- Username: `@nome_do_grupo`
+- Link: `https://t.me/nome_do_grupo`
+
+**Estrutura de backup criada:**
+```
+backups/
+├── NomeDoGrupo_messages_20260207.json
+├── NomeDoGrupo_participants_20260207.json
+└── media/
+    ├── photo/
+    │   ├── 1701234567_7641443680_12345.jpg
+    │   └── ...
+    ├── video/
+    ├── document/
+    ├── audio/
+    └── sticker/
+```
+
+## Notas
+
+- Em **modo usuário**, na primeira execução o Telethon vai pedir o **número** e o **código** (e 2FA, se houver) e salvar uma sessão local em `session.session`.
+- Em **modo bot**, o login usa `BOT_TOKEN` e a sessão local padrão é `bot_session.session`.
+- Em modo bot, ações destrutivas e backup dependem das permissões administrativas do bot no chat.
+- Pode haver limitações/erros por rate limit do Telegram; o script tenta ser cuidadoso.
+- Relatórios são salvos no diretório `relatorios/` com timestamp no nome do arquivo.
+- O modo `--report` não faz alterações na conta, apenas gera os arquivos de relatório.
+</file>
+
+</files>
