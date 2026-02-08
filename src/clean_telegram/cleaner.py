@@ -29,7 +29,9 @@ async def delete_dialog(client: TelegramClient, peer, *, dry_run: bool) -> None:
     )
 
 
-async def leave_channel(client: TelegramClient, entity: Channel, *, dry_run: bool) -> None:
+async def leave_channel(
+    client: TelegramClient, entity: Channel, *, dry_run: bool
+) -> None:
     """Sai de um canal/megagrupo (Channel)."""
     if dry_run:
         return
@@ -77,7 +79,7 @@ async def _process_dialog(
                 await client.delete_dialog(entity)
         return
 
-    if isinstance(entity, User) or getattr(entity, "bot", None) is not None:
+    if isinstance(entity, User):
         logger.info("[%s] APAGAR conversa: %s", index, title)
         await delete_dialog(client, entity, dry_run=dry_run)
         return
@@ -130,7 +132,7 @@ async def clean_all_dialogs(
 
             except FloodWaitError as e:
                 attempt += 1
-                wait_s = int(getattr(e, "seconds", 0) or 0)
+                wait_s = max(5, int(getattr(e, "seconds", 0) or 0))
                 logger.warning(
                     "Rate limit (FloodWait) em '%s'. Aguardando %ss (tentativa %s/%s)...",
                     title,

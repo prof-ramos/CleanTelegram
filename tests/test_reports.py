@@ -16,7 +16,6 @@ from clean_telegram.reports import (
     generate_groups_channels_report,
 )
 
-
 # Fixtures
 
 
@@ -130,7 +129,8 @@ def mock_client_with_users():
         phone = ""
 
         class status:
-            expires = datetime.now().timestamp() + 3600
+            # Usar timestamp fixo para testes determinísticos
+            expires = 1707321600 + 3600  # 2024-02-07 12:00:00 + 1h
 
     class MockChannel:
         id = 555666
@@ -328,8 +328,8 @@ def test_format_status_with_was_online():
 
 def test_format_status_without_was_online():
     """Testa formatação de status sem was_online."""
-    status = mock.Mock()
-    delattr(status, "was_online")
+    # Criar mock que não tem atributo was_online
+    status = mock.Mock(spec=[])  # Spec vazio = nenhum atributo
 
     result = _format_status(status)
 
@@ -359,7 +359,9 @@ async def test_generate_groups_channels_report_csv(mock_client_with_channels, tm
 
 
 @pytest.mark.asyncio
-async def test_generate_groups_channels_report_json(mock_client_with_channels, tmp_path):
+async def test_generate_groups_channels_report_json(
+    mock_client_with_channels, tmp_path
+):
     """Testa geração de relatório JSON de grupos/canais."""
     output_path = tmp_path / "test_groups.json"
 
@@ -399,7 +401,9 @@ async def test_generate_groups_channels_report_txt(mock_client_with_channels, tm
 
 
 @pytest.mark.asyncio
-async def test_generate_groups_channels_report_default_path(mock_client_with_channels, tmp_path, monkeypatch):
+async def test_generate_groups_channels_report_default_path(
+    mock_client_with_channels, tmp_path, monkeypatch
+):
     """Testa geração de relatório com caminho padrão (timestamp)."""
     # Mudar diretório de trabalho para tmp_path
     monkeypatch.chdir(tmp_path)
@@ -478,7 +482,9 @@ async def test_generate_contacts_report_txt(mock_client_with_users, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_generate_groups_channels_report_invalid_format(mock_client_with_channels, tmp_path):
+async def test_generate_groups_channels_report_invalid_format(
+    mock_client_with_channels, tmp_path
+):
     """Testa erro ao passar formato inválido."""
     output_path = tmp_path / "test.invalid"
 

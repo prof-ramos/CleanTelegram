@@ -1,41 +1,10 @@
 """Testes do modo interativo para funcionalidade de backup."""
 
-from datetime import datetime
-from typing import AsyncIterator, Generic, TypeVar
 from unittest import mock
 
 import pytest
 
 from clean_telegram.interactive import interactive_backup
-
-
-T = TypeVar('T')
-
-
-class AsyncIteratorMock(Generic[T]):
-    """Helper para criar async iterators em testes."""
-
-    def __init__(self, items: list[T]):
-        self.items = items
-        self.index = 0
-
-    def __aiter__(self) -> AsyncIterator[T]:
-        return self
-
-    async def __anext__(self) -> T:
-        if self.index >= len(self.items):
-            raise StopAsyncIteration
-        item = self.items[self.index]
-        self.index += 1
-        return item
-
-
-def create_async_mock(return_value):
-    """Cria um mock assíncrono que retorna o valor especificado."""
-    async def async_impl():
-        return return_value
-    return async_impl
-
 
 # =============================================================================
 # Testes: interactive_backup (básicos)
@@ -57,6 +26,7 @@ class TestInteractiveBackupBasic:
             entity.id = -1001234567890
             entity.title = "Test Group"
             return entity
+
         client.get_entity = mock_get_entity
 
         with mock.patch("clean_telegram.interactive.questionary") as mock_q:
@@ -79,10 +49,12 @@ class TestInteractiveBackupBasic:
             me.username = "testuser"
             me.first_name = "Test"
             return me
+
         client.get_me = mock_get_me
 
         async def mock_get_entity(chat_id):
             raise ValueError("Chat not found")
+
         client.get_entity = mock_get_entity
 
         with mock.patch("clean_telegram.interactive.questionary") as mock_q:
@@ -104,6 +76,7 @@ class TestInteractiveBackupBasic:
             me.username = "testuser"
             me.first_name = "Test"
             return me
+
         client.get_me = mock_get_me
 
         async def mock_get_entity(chat_id):
@@ -111,6 +84,7 @@ class TestInteractiveBackupBasic:
             entity.id = -1001234567890
             entity.title = "Test Group"
             return entity
+
         client.get_entity = mock_get_entity
 
         with mock.patch("clean_telegram.interactive.questionary") as mock_q:
@@ -144,6 +118,7 @@ class TestInteractiveMainMenu:
             me.first_name = "Test"
             me.last_name = "User"
             return me
+
         client.get_me = mock_get_me
 
         call_count = [0]
@@ -157,8 +132,12 @@ class TestInteractiveMainMenu:
         with mock.patch("clean_telegram.interactive.questionary") as mock_q:
             ask_select_mock = mock.AsyncMock(side_effect=mock_select_side_effect)
             mock_q.select.return_value.ask_async = ask_select_mock
-            mock_q.press_any_key_to_continue.return_value.ask_async = mock.AsyncMock(return_value=None)
-            with mock.patch("clean_telegram.interactive.interactive_backup") as mock_backup:
+            mock_q.press_any_key_to_continue.return_value.ask_async = mock.AsyncMock(
+                return_value=None
+            )
+            with mock.patch(
+                "clean_telegram.interactive.interactive_backup"
+            ) as mock_backup:
                 with mock.patch("builtins.print"):
                     await interactive_main(client)
 
@@ -168,7 +147,6 @@ class TestInteractiveMainMenu:
     @pytest.mark.asyncio
     async def test_menu_options(self):
         """Testa que todas as opções esperadas estão no menu."""
-        from clean_telegram.interactive import interactive_main
         import inspect
 
         # Verificar que interactive_backup existe e pode ser chamada

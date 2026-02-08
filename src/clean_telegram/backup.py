@@ -14,6 +14,7 @@ from typing import Any
 # Tentar importar orjson para performance, com fallback para json stdlib
 try:
     import orjson
+
     HAS_ORJSON = True
 except ImportError:
     HAS_ORJSON = False
@@ -37,7 +38,7 @@ def _json_dumps(obj: Any) -> bytes:
     if HAS_ORJSON:
         return orjson.dumps(obj, option=orjson.OPT_APPEND_NEWLINE)
     # Fallback para json stdlib
-    return (json.dumps(obj, ensure_ascii=False) + "\n").encode('utf-8')
+    return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
 
 
 def _serialize_message(message) -> dict[str, Any]:
@@ -51,7 +52,9 @@ def _serialize_message(message) -> dict[str, Any]:
         "date": message.date.isoformat() if message.date else None,
         "text": message.text,
         "sender_id": message.sender_id,
-        "reply_to_msg_id": _safe_getattr(message.reply_to, 'reply_to_msg_id') if message.reply_to else None,
+        "reply_to_msg_id": _safe_getattr(message.reply_to, "reply_to_msg_id")
+        if message.reply_to
+        else None,
         "has_media": bool(message.media),
     }
 
@@ -59,9 +62,9 @@ def _serialize_message(message) -> dict[str, Any]:
     if message.sender:
         msg_data["sender"] = {
             "id": message.sender.id,
-            "username": _safe_getattr(message.sender, 'username'),
-            "first_name": _safe_getattr(message.sender, 'first_name'),
-            "last_name": _safe_getattr(message.sender, 'last_name'),
+            "username": _safe_getattr(message.sender, "username"),
+            "first_name": _safe_getattr(message.sender, "first_name"),
+            "last_name": _safe_getattr(message.sender, "last_name"),
         }
 
     # Adicionar informações de mídia
@@ -76,36 +79,35 @@ def _serialize_participant(participant, chat_entity) -> dict[str, Any]:
 
     Função auxiliar para evitar duplicação de código.
     """
-    user = participant.user if hasattr(participant, 'user') else participant
+    user = participant.user if hasattr(participant, "user") else participant
 
     user_data: dict[str, Any] = {
         "id": user.id,
-        "first_name": _safe_getattr(user, 'first_name'),
-        "last_name": _safe_getattr(user, 'last_name'),
-        "username": _safe_getattr(user, 'username'),
-        "is_bot": _safe_getattr(user, 'bot', False),
-        "is_verified": _safe_getattr(user, 'verified', False),
-        "is_premium": _safe_getattr(user, 'premium', False),
-        "phone": _safe_getattr(user, 'phone'),
+        "first_name": _safe_getattr(user, "first_name"),
+        "last_name": _safe_getattr(user, "last_name"),
+        "username": _safe_getattr(user, "username"),
+        "is_bot": _safe_getattr(user, "bot", False),
+        "is_verified": _safe_getattr(user, "verified", False),
+        "is_premium": _safe_getattr(user, "premium", False),
+        "phone": _safe_getattr(user, "phone"),
     }
 
     # Adicionar informações do participante
-    if hasattr(participant, 'participant'):
+    if hasattr(participant, "participant"):
         p = participant.participant
-        user_data["joined_date"] = _safe_getattr(p, 'date')
+        user_data["joined_date"] = _safe_getattr(p, "date")
         if user_data["joined_date"]:
             user_data["joined_date"] = user_data["joined_date"].isoformat()
-        user_data["inviter_id"] = _safe_getattr(p, 'inviter_id')
-        user_data["admin_rank"] = _safe_getattr(p, 'admin_rank')
+        user_data["inviter_id"] = _safe_getattr(p, "inviter_id")
+        user_data["admin_rank"] = _safe_getattr(p, "admin_rank")
 
     # Status online (para User)
-    from telethon.tl.types import User
     if isinstance(user, User):
-        status = _safe_getattr(user, 'status')
+        status = _safe_getattr(user, "status")
         if status:
-            if hasattr(status, 'was_online') and status.was_online:
+            if hasattr(status, "was_online") and status.was_online:
                 user_data["last_online"] = status.was_online.isoformat()
-            elif hasattr(status, 'expires'):
+            elif hasattr(status, "expires"):
                 user_data["online"] = True
 
     return user_data
@@ -142,39 +144,22 @@ async def export_messages_to_json(
     messages_data = []
 
     async for message in client.iter_messages(chat_entity):
-        msg_data: dict[str, Any] = {
-            "id": message.id,
-            "date": message.date.isoformat() if message.date else None,
-            "text": message.text,
-            "sender_id": message.sender_id,
-            "reply_to_msg_id": _safe_getattr(message.reply_to, 'reply_to_msg_id') if message.reply_to else None,
-            "has_media": bool(message.media),
-        }
-
-        # Adicionar informações do remetente se disponível
-        if message.sender:
-            msg_data["sender"] = {
-                "id": message.sender.id,
-                "username": _safe_getattr(message.sender, 'username'),
-                "first_name": _safe_getattr(message.sender, 'first_name'),
-                "last_name": _safe_getattr(message.sender, 'last_name'),
-            }
-
-        # Adicionar informações de mídia
-        if message.media:
-            msg_data["media_type"] = type(message.media).__name__
-
-        messages_data.append(msg_data)
+        messages_data.append(_serialize_message(message))
 
     # Salvar JSON
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump({
-            "export_date": datetime.now().isoformat(),
-            "chat_id": chat_entity.id,
-            "chat_title": _safe_getattr(chat_entity, 'title'),
-            "total_messages": len(messages_data),
-            "messages": messages_data,
-        }, f, ensure_ascii=False, indent=2)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "export_date": datetime.now().isoformat(),
+                "chat_id": chat_entity.id,
+                "chat_title": _safe_getattr(chat_entity, "title"),
+                "total_messages": len(messages_data),
+                "messages": messages_data,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
 
     return len(messages_data)
 
@@ -200,13 +185,13 @@ async def export_messages_to_json_streaming(
     count = 0
 
     # orjson requer modo binário
-    with open(output_path, 'wb') as f:
+    with open(output_path, "wb") as f:
         # Escrever cabeçalho de metadados
         header = {
             "_format": "ndjson",
             "export_date": datetime.now().isoformat(),
             "chat_id": chat_entity.id,
-            "chat_title": _safe_getattr(chat_entity, 'title'),
+            "chat_title": _safe_getattr(chat_entity, "title"),
         }
         f.write(_json_dumps(header))
 
@@ -236,35 +221,49 @@ async def export_messages_to_csv(
     """
     count = 0
 
-    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "ID", "Data", "Remetente ID", "Nome", "Username",
-            "Texto", "Tipo Mídia", "Reply To"
-        ])
+        writer.writerow(
+            [
+                "ID",
+                "Data",
+                "Remetente ID",
+                "Nome",
+                "Username",
+                "Texto",
+                "Tipo Mídia",
+                "Reply To",
+            ]
+        )
 
         async for message in client.iter_messages(chat_entity):
             sender_name = ""
             sender_username = ""
             if message.sender:
-                first_name = _safe_getattr(message.sender, 'first_name', '')
-                last_name = _safe_getattr(message.sender, 'last_name', '')
+                first_name = _safe_getattr(message.sender, "first_name", "")
+                last_name = _safe_getattr(message.sender, "last_name", "")
                 sender_name = f"{first_name} {last_name}".strip()
-                sender_username = _safe_getattr(message.sender, 'username', '')
+                sender_username = _safe_getattr(message.sender, "username", "")
 
             media_type = type(message.media).__name__ if message.media else ""
-            reply_to = _safe_getattr(message.reply_to, 'reply_to_msg_id') if message.reply_to else ""
+            reply_to = (
+                _safe_getattr(message.reply_to, "reply_to_msg_id")
+                if message.reply_to
+                else ""
+            )
 
-            writer.writerow([
-                message.id,
-                message.date.isoformat() if message.date else "",
-                message.sender_id,
-                sender_name,
-                sender_username,
-                message.text or "",
-                media_type,
-                reply_to,
-            ])
+            writer.writerow(
+                [
+                    message.id,
+                    message.date.isoformat() if message.date else "",
+                    message.sender_id,
+                    sender_name,
+                    sender_username,
+                    message.text or "",
+                    media_type,
+                    reply_to,
+                ]
+            )
             count += 1
 
     return count
@@ -288,48 +287,22 @@ async def export_participants_to_json(
     participants_data = []
 
     async for participant in client.iter_participants(chat_entity):
-        user = participant.user if hasattr(participant, 'user') else participant
-
-        user_data: dict[str, Any] = {
-            "id": user.id,
-            "first_name": _safe_getattr(user, 'first_name'),
-            "last_name": _safe_getattr(user, 'last_name'),
-            "username": _safe_getattr(user, 'username'),
-            "is_bot": _safe_getattr(user, 'bot', False),
-            "is_verified": _safe_getattr(user, 'verified', False),
-            "is_premium": _safe_getattr(user, 'premium', False),
-            "phone": _safe_getattr(user, 'phone'),
-        }
-
-        # Adicionar informações do participante
-        if hasattr(participant, 'participant'):
-            p = participant.participant
-            user_data["joined_date"] = _safe_getattr(p, 'date')
-            if user_data["joined_date"]:
-                user_data["joined_date"] = user_data["joined_date"].isoformat()
-            user_data["inviter_id"] = _safe_getattr(p, 'inviter_id')
-            user_data["admin_rank"] = _safe_getattr(p, 'admin_rank')
-
-        # Status online (para User)
-        if isinstance(user, User):
-            status = _safe_getattr(user, 'status')
-            if status:
-                if hasattr(status, 'was_online') and status.was_online:
-                    user_data["last_online"] = status.was_online.isoformat()
-                elif hasattr(status, 'expires'):
-                    user_data["online"] = True
-
-        participants_data.append(user_data)
+        participants_data.append(_serialize_participant(participant, chat_entity))
 
     # Salvar JSON
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump({
-            "export_date": datetime.now().isoformat(),
-            "chat_id": chat_entity.id,
-            "chat_title": _safe_getattr(chat_entity, 'title'),
-            "total_participants": len(participants_data),
-            "participants": participants_data,
-        }, f, ensure_ascii=False, indent=2)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "export_date": datetime.now().isoformat(),
+                "chat_id": chat_entity.id,
+                "chat_title": _safe_getattr(chat_entity, "title"),
+                "total_participants": len(participants_data),
+                "participants": participants_data,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
 
     return len(participants_data)
 
@@ -355,13 +328,13 @@ async def export_participants_to_json_streaming(
     count = 0
 
     # orjson requer modo binário
-    with open(output_path, 'wb') as f:
+    with open(output_path, "wb") as f:
         # Escrever cabeçalho de metadados
         header = {
             "_format": "ndjson",
             "export_date": datetime.now().isoformat(),
             "chat_id": chat_entity.id,
-            "chat_title": _safe_getattr(chat_entity, 'title'),
+            "chat_title": _safe_getattr(chat_entity, "title"),
         }
         f.write(_json_dumps(header))
 
@@ -391,42 +364,54 @@ async def export_participants_to_csv(
     """
     count = 0
 
-    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "ID", "Nome", "Username", "Bot", "Verificado", "Premium",
-            "Telefone", "Data Entrada", "ID Quem Convidou", "Admin Rank"
-        ])
+        writer.writerow(
+            [
+                "ID",
+                "Nome",
+                "Username",
+                "Bot",
+                "Verificado",
+                "Premium",
+                "Telefone",
+                "Data Entrada",
+                "ID Quem Convidou",
+                "Admin Rank",
+            ]
+        )
 
         async for participant in client.iter_participants(chat_entity):
-            user = participant.user if hasattr(participant, 'user') else participant
+            user = participant.user if hasattr(participant, "user") else participant
 
-            first_name = _safe_getattr(user, 'first_name', '')
-            last_name = _safe_getattr(user, 'last_name', '')
+            first_name = _safe_getattr(user, "first_name", "")
+            last_name = _safe_getattr(user, "last_name", "")
             full_name = f"{first_name} {last_name}".strip()
 
             joined_date = None
             inviter_id = None
             admin_rank = None
 
-            if hasattr(participant, 'participant'):
+            if hasattr(participant, "participant"):
                 p = participant.participant
-                joined_date = _safe_getattr(p, 'date')
-                inviter_id = _safe_getattr(p, 'inviter_id')
-                admin_rank = _safe_getattr(p, 'admin_rank')
+                joined_date = _safe_getattr(p, "date")
+                inviter_id = _safe_getattr(p, "inviter_id")
+                admin_rank = _safe_getattr(p, "admin_rank")
 
-            writer.writerow([
-                user.id,
-                full_name,
-                _safe_getattr(user, 'username', '') or "",
-                "Sim" if _safe_getattr(user, 'bot', False) else "Não",
-                "Sim" if _safe_getattr(user, 'verified', False) else "Não",
-                "Sim" if _safe_getattr(user, 'premium', False) else "Não",
-                _safe_getattr(user, 'phone', '') or "",
-                joined_date.isoformat() if joined_date else "",
-                inviter_id or "",
-                admin_rank or "",
-            ])
+            writer.writerow(
+                [
+                    user.id,
+                    full_name,
+                    _safe_getattr(user, "username", "") or "",
+                    "Sim" if _safe_getattr(user, "bot", False) else "Não",
+                    "Sim" if _safe_getattr(user, "verified", False) else "Não",
+                    "Sim" if _safe_getattr(user, "premium", False) else "Não",
+                    _safe_getattr(user, "phone", "") or "",
+                    joined_date.isoformat() if joined_date else "",
+                    inviter_id or "",
+                    admin_rank or "",
+                ]
+            )
             count += 1
 
     return count
@@ -452,8 +437,10 @@ async def backup_group_full(
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     timestamp = _get_timestamp()
-    chat_title = _safe_getattr(chat_entity, 'title', str(chat_entity.id))
-    safe_name = "".join(c for c in chat_title if c.isalnum() or c in (' ', '-', '_')).strip()
+    chat_title = _safe_getattr(chat_entity, "title", str(chat_entity.id))
+    safe_name = "".join(
+        c for c in chat_title if c.isalnum() or c in (" ", "-", "_")
+    ).strip()
     safe_name = safe_name[:50]  # Limitar tamanho do nome
 
     results: dict[str, Any] = {
@@ -478,13 +465,17 @@ async def backup_group_full(
     # Exportar participantes
     if formats in ("json", "both"):
         participants_json = f"{output_dir}/{safe_name}_participants_{timestamp}.json"
-        part_count = await export_participants_to_json(client, chat_entity, participants_json)
+        part_count = await export_participants_to_json(
+            client, chat_entity, participants_json
+        )
         results["participants_json"] = participants_json
         results["participants_count"] = part_count
 
     if formats in ("csv", "both"):
         participants_csv = f"{output_dir}/{safe_name}_participants_{timestamp}.csv"
-        part_count = await export_participants_to_csv(client, chat_entity, participants_csv)
+        part_count = await export_participants_to_csv(
+            client, chat_entity, participants_csv
+        )
         results["participants_csv"] = participants_csv
         results["participants_count"] = part_count
 
@@ -513,12 +504,13 @@ async def download_media_from_chat(
         Dicionário com contagem de arquivos baixados por tipo.
     """
     from telethon.tl.types import (
+        MessageMediaAudio,
         MessageMediaDocument,
+        MessageMediaGeoLive,
         MessageMediaPhoto,
         MessageMediaSticker,
         MessageMediaVideo,
-        MessageMediaAudio,
-        MessageMediaGeoLive,
+        MessageMediaVoice,
     )
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -540,7 +532,6 @@ async def download_media_from_chat(
 
     async def _progress_callback(received: int, total: int) -> None:
         """Callback de progresso do download."""
-        percent = (received / total) * 100 if total > 0 else 0
         if received == 0:  # Primeira chamada
             print(f"  Baixando: {total / 1024 / 1024:.1f} MB...")
 
@@ -549,6 +540,7 @@ async def download_media_from_chat(
             continue
 
         media_type = "other"
+        ext = ".bin"  # Valor padrão
         should_download = media_types is None  # Baixar tudo se não especificado
 
         if isinstance(message.media, MessageMediaPhoto):
@@ -645,14 +637,41 @@ async def download_media_parallel(
     Returns:
         Dicionário com contagem de arquivos baixados por tipo.
     """
+    # Importar tipos de mídia, com fallback para compatibilidade
     from telethon.tl.types import (
         MessageMediaDocument,
-        MessageMediaPhoto,
-        MessageMediaSticker,
-        MessageMediaVideo,
-        MessageMediaAudio,
         MessageMediaGeoLive,
+        MessageMediaPhoto,
     )
+
+    # Tipos que podem não existir em todas as versões
+    try:
+        from telethon.tl.types import MessageMediaVideo
+
+        HAS_VIDEO = True
+    except ImportError:
+        HAS_VIDEO = False
+
+    try:
+        from telethon.tl.types import MessageMediaAudio
+
+        HAS_AUDIO = True
+    except ImportError:
+        HAS_AUDIO = False
+
+    try:
+        from telethon.tl.types import MessageMediaVoice
+
+        HAS_VOICE = True
+    except ImportError:
+        HAS_VOICE = False
+
+    try:
+        from telethon.tl.types import MessageMediaSticker
+
+        HAS_STICKER = True
+    except ImportError:
+        HAS_STICKER = False
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -686,7 +705,10 @@ async def download_media_parallel(
         if isinstance(message.media, MessageMediaPhoto):
             media_type = "photo"
             ext = ".jpg"
-        elif isinstance(message.media, (MessageMediaVideo, MessageMediaGeoLive)):
+        elif HAS_VIDEO and isinstance(message.media, MessageMediaVideo):
+            media_type = "video"
+            ext = ".mp4"
+        elif isinstance(message.media, MessageMediaGeoLive):
             media_type = "video"
             ext = ".mp4"
         elif isinstance(message.media, MessageMediaDocument):
@@ -703,13 +725,13 @@ async def download_media_parallel(
                         break
             if ext == "":
                 ext = ".bin"
-        elif isinstance(message.media, MessageMediaAudio):
+        elif HAS_AUDIO and isinstance(message.media, MessageMediaAudio):
             media_type = "audio"
             ext = ".mp3"
-        elif isinstance(message.media, MessageMediaVoice):
+        elif HAS_VOICE and isinstance(message.media, MessageMediaVoice):
             media_type = "voice"
             ext = ".ogg"
-        elif isinstance(message.media, MessageMediaSticker):
+        elif HAS_STICKER and isinstance(message.media, MessageMediaSticker):
             media_type = "sticker"
             ext = ".webp"
         else:
@@ -804,22 +826,31 @@ async def export_messages_both_formats(
     msg_count = 0
     BUFFER_SIZE = 100  # Escrever JSON a cada 100 mensagens
 
-    with open(json_path, 'wb') as json_f, \
-         open(csv_path, 'w', newline='', encoding='utf-8') as csv_f:
-
+    with (
+        open(json_path, "wb") as json_f,
+        open(csv_path, "w", newline="", encoding="utf-8") as csv_f,
+    ):
         # Setup CSV
         csv_writer = csv.writer(csv_f)
-        csv_writer.writerow([
-            "ID", "Data", "Remetente ID", "Nome", "Username",
-            "Texto", "Tipo Mídia", "Reply To"
-        ])
+        csv_writer.writerow(
+            [
+                "ID",
+                "Data",
+                "Remetente ID",
+                "Nome",
+                "Username",
+                "Texto",
+                "Tipo Mídia",
+                "Reply To",
+            ]
+        )
 
         # Setup JSON header
         header = {
             "_format": "ndjson",
             "export_date": datetime.now().isoformat(),
             "chat_id": chat_entity.id,
-            "chat_title": _safe_getattr(chat_entity, 'title'),
+            "chat_title": _safe_getattr(chat_entity, "title"),
         }
         json_f.write(_json_dumps(header))
 
@@ -837,24 +868,30 @@ async def export_messages_both_formats(
             sender_name = ""
             sender_username = ""
             if message.sender:
-                first_name = _safe_getattr(message.sender, 'first_name', '')
-                last_name = _safe_getattr(message.sender, 'last_name', '')
+                first_name = _safe_getattr(message.sender, "first_name", "")
+                last_name = _safe_getattr(message.sender, "last_name", "")
                 sender_name = f"{first_name} {last_name}".strip()
-                sender_username = _safe_getattr(message.sender, 'username', '')
+                sender_username = _safe_getattr(message.sender, "username", "")
 
             media_type = type(message.media).__name__ if message.media else ""
-            reply_to = _safe_getattr(message.reply_to, 'reply_to_msg_id') if message.reply_to else ""
+            reply_to = (
+                _safe_getattr(message.reply_to, "reply_to_msg_id")
+                if message.reply_to
+                else ""
+            )
 
-            csv_writer.writerow([
-                message.id,
-                message.date.isoformat() if message.date else "",
-                message.sender_id,
-                sender_name,
-                sender_username,
-                message.text or "",
-                media_type,
-                reply_to,
-            ])
+            csv_writer.writerow(
+                [
+                    message.id,
+                    message.date.isoformat() if message.date else "",
+                    message.sender_id,
+                    sender_name,
+                    sender_username,
+                    message.text or "",
+                    media_type,
+                    reply_to,
+                ]
+            )
 
             # Flush JSON buffer periodicamente
             if len(json_buffer) >= BUFFER_SIZE:
@@ -891,22 +928,33 @@ async def export_participants_both_formats(
     part_count = 0
     BUFFER_SIZE = 100
 
-    with open(json_path, 'wb') as json_f, \
-         open(csv_path, 'w', newline='', encoding='utf-8') as csv_f:
-
+    with (
+        open(json_path, "wb") as json_f,
+        open(csv_path, "w", newline="", encoding="utf-8") as csv_f,
+    ):
         # Setup CSV
         csv_writer = csv.writer(csv_f)
-        csv_writer.writerow([
-            "ID", "Nome", "Username", "Bot", "Verificado", "Premium",
-            "Telefone", "Data Entrada", "ID Quem Convidou", "Admin Rank"
-        ])
+        csv_writer.writerow(
+            [
+                "ID",
+                "Nome",
+                "Username",
+                "Bot",
+                "Verificado",
+                "Premium",
+                "Telefone",
+                "Data Entrada",
+                "ID Quem Convidou",
+                "Admin Rank",
+            ]
+        )
 
         # Setup JSON header
         header = {
             "_format": "ndjson",
             "export_date": datetime.now().isoformat(),
             "chat_id": chat_entity.id,
-            "chat_title": _safe_getattr(chat_entity, 'title'),
+            "chat_title": _safe_getattr(chat_entity, "title"),
         }
         json_f.write(_json_dumps(header))
 
@@ -921,34 +969,36 @@ async def export_participants_both_formats(
             json_buffer.append(user_data)
 
             # Escrever CSV imediatamente
-            user = participant.user if hasattr(participant, 'user') else participant
+            user = participant.user if hasattr(participant, "user") else participant
 
-            first_name = _safe_getattr(user, 'first_name', '')
-            last_name = _safe_getattr(user, 'last_name', '')
+            first_name = _safe_getattr(user, "first_name", "")
+            last_name = _safe_getattr(user, "last_name", "")
             full_name = f"{first_name} {last_name}".strip()
 
             joined_date = None
             inviter_id = None
             admin_rank = None
 
-            if hasattr(participant, 'participant'):
+            if hasattr(participant, "participant"):
                 p = participant.participant
-                joined_date = _safe_getattr(p, 'date')
-                inviter_id = _safe_getattr(p, 'inviter_id')
-                admin_rank = _safe_getattr(p, 'admin_rank')
+                joined_date = _safe_getattr(p, "date")
+                inviter_id = _safe_getattr(p, "inviter_id")
+                admin_rank = _safe_getattr(p, "admin_rank")
 
-            csv_writer.writerow([
-                user.id,
-                full_name,
-                _safe_getattr(user, 'username', '') or "",
-                "Sim" if _safe_getattr(user, 'bot', False) else "Não",
-                "Sim" if _safe_getattr(user, 'verified', False) else "Não",
-                "Sim" if _safe_getattr(user, 'premium', False) else "Não",
-                _safe_getattr(user, 'phone', '') or "",
-                joined_date.isoformat() if joined_date else "",
-                inviter_id or "",
-                admin_rank or "",
-            ])
+            csv_writer.writerow(
+                [
+                    user.id,
+                    full_name,
+                    _safe_getattr(user, "username", "") or "",
+                    "Sim" if _safe_getattr(user, "bot", False) else "Não",
+                    "Sim" if _safe_getattr(user, "verified", False) else "Não",
+                    "Sim" if _safe_getattr(user, "premium", False) else "Não",
+                    _safe_getattr(user, "phone", "") or "",
+                    joined_date.isoformat() if joined_date else "",
+                    inviter_id or "",
+                    admin_rank or "",
+                ]
+            )
 
             # Flush JSON buffer periodicamente
             if len(json_buffer) >= BUFFER_SIZE:
@@ -982,7 +1032,7 @@ async def send_backup_to_cloud(
         Mensagem enviada para o Cloud Chat.
     """
     logger.info(f"Enviando arquivo para Cloud Chat: {file_path}")
-    return await client.send_file('me', file_path, caption=caption)
+    return await client.send_file("me", file_path, caption=caption)
 
 
 async def backup_group_with_media(
@@ -1013,8 +1063,10 @@ async def backup_group_with_media(
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     timestamp = _get_timestamp()
-    chat_title = _safe_getattr(chat_entity, 'title', str(chat_entity.id))
-    safe_name = "".join(c for c in chat_title if c.isalnum() or c in (' ', '-', '_')).strip()
+    chat_title = _safe_getattr(chat_entity, "title", str(chat_entity.id))
+    safe_name = "".join(
+        c for c in chat_title if c.isalnum() or c in (" ", "-", "_")
+    ).strip()
     safe_name = safe_name[:50]  # Limitar tamanho do nome
 
     results: dict[str, Any] = {
@@ -1028,13 +1080,17 @@ async def backup_group_with_media(
         # NOVO: usar função única para iteração única
         messages_json = f"{output_dir}/{safe_name}_messages_{timestamp}.json"
         messages_csv = f"{output_dir}/{safe_name}_messages_{timestamp}.csv"
-        msg_result = await export_messages_both_formats(client, chat_entity, messages_json, messages_csv)
+        msg_result = await export_messages_both_formats(
+            client, chat_entity, messages_json, messages_csv
+        )
         results["messages_json"] = messages_json
         results["messages_csv"] = messages_csv
         results["messages_count"] = msg_result["messages_count"]
     elif formats == "json":
         messages_json = f"{output_dir}/{safe_name}_messages_{timestamp}.json"
-        msg_count = await export_messages_to_json_streaming(client, chat_entity, messages_json)
+        msg_count = await export_messages_to_json_streaming(
+            client, chat_entity, messages_json
+        )
         results["messages_json"] = messages_json
         results["messages_count"] = msg_count
     elif formats == "csv":
@@ -1043,29 +1099,54 @@ async def backup_group_with_media(
         results["messages_csv"] = messages_csv
         results["messages_count"] = msg_count
 
-    # Exportar participantes
-    if formats == "both":
-        # NOVO: usar função única para iteração única
-        participants_json = f"{output_dir}/{safe_name}_participants_{timestamp}.json"
-        participants_csv = f"{output_dir}/{safe_name}_participants_{timestamp}.csv"
-        part_result = await export_participants_both_formats(client, chat_entity, participants_json, participants_csv)
-        results["participants_json"] = participants_json
-        results["participants_csv"] = participants_csv
-        results["participants_count"] = part_result["participants_count"]
-    elif formats == "json":
-        participants_json = f"{output_dir}/{safe_name}_participants_{timestamp}.json"
-        part_count = await export_participants_to_json_streaming(client, chat_entity, participants_json)
-        results["participants_json"] = participants_json
-        results["participants_count"] = part_count
-    elif formats == "csv":
-        participants_csv = f"{output_dir}/{safe_name}_participants_{timestamp}.csv"
-        part_count = await export_participants_to_csv(client, chat_entity, participants_csv)
-        results["participants_csv"] = participants_csv
-        results["participants_count"] = part_count
+    # Exportar participantes (com tratamento de permissão)
+    try:
+        if formats == "both":
+            # NOVO: usar função única para iteração única
+            participants_json = (
+                f"{output_dir}/{safe_name}_participants_{timestamp}.json"
+            )
+            participants_csv = f"{output_dir}/{safe_name}_participants_{timestamp}.csv"
+            part_result = await export_participants_both_formats(
+                client, chat_entity, participants_json, participants_csv
+            )
+            results["participants_json"] = participants_json
+            results["participants_csv"] = participants_csv
+            results["participants_count"] = part_result["participants_count"]
+        elif formats == "json":
+            participants_json = (
+                f"{output_dir}/{safe_name}_participants_{timestamp}.json"
+            )
+            part_count = await export_participants_to_json_streaming(
+                client, chat_entity, participants_json
+            )
+            results["participants_json"] = participants_json
+            results["participants_count"] = part_count
+        elif formats == "csv":
+            participants_csv = f"{output_dir}/{safe_name}_participants_{timestamp}.csv"
+            part_count = await export_participants_to_csv(
+                client, chat_entity, participants_csv
+            )
+            results["participants_csv"] = participants_csv
+            results["participants_count"] = part_count
+    except Exception as e:
+        # Tratar erros de permissão (ChatAdminRequiredError)
+        error_name = type(e).__name__
+        if "ChatAdminRequired" in error_name or "admin" in str(e).lower():
+            logger.warning(
+                "Sem permissão para listar participantes (requer admin). "
+                "Continuando backup apenas com mensagens."
+            )
+            results["participants_error"] = "Requer permissão de admin"
+            results["participants_count"] = 0
+        else:
+            raise  # Re-lança outros erros
 
     # Baixar mídia (usar versão paralela para performance)
     if download_media:
-        logger.info(f"Baixando arquivos de mídia (máx {max_concurrent_downloads} simultâneos)...")
+        logger.info(
+            f"Baixando arquivos de mídia (máx {max_concurrent_downloads} simultâneos)..."
+        )
         media_counts = await download_media_parallel(
             client,
             chat_entity,
@@ -1095,7 +1176,10 @@ async def backup_group_with_media(
             cloud_files.append("messages_csv")
 
         # Enviar participantes JSON
-        if "participants_json" in results and Path(results["participants_json"]).exists():
+        if (
+            "participants_json" in results
+            and Path(results["participants_json"]).exists()
+        ):
             part_count = results.get("participants_count", 0)
             caption = f"👥 Backup: {chat_title} - Participantes ({part_count} membros)"
             await send_backup_to_cloud(client, results["participants_json"], caption)
@@ -1104,12 +1188,14 @@ async def backup_group_with_media(
         # Enviar participantes CSV
         if "participants_csv" in results and Path(results["participants_csv"]).exists():
             part_count = results.get("participants_count", 0)
-            caption = f"👥 Backup: {chat_title} - Participantes CSV ({part_count} membros)"
+            caption = (
+                f"👥 Backup: {chat_title} - Participantes CSV ({part_count} membros)"
+            )
             await send_backup_to_cloud(client, results["participants_csv"], caption)
             cloud_files.append("participants_csv")
 
         # Enviar mensagem de resumo
-        summary_parts = [f"📊 **Resumo do Backup**\n"]
+        summary_parts = ["📊 **Resumo do Backup**\n"]
         summary_parts.append(f"📁 Grupo: {chat_title}")
         summary_parts.append(f"📅 Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         if "messages_count" in results:
@@ -1118,12 +1204,13 @@ async def backup_group_with_media(
             summary_parts.append(f"👥 Participantes: {results['participants_count']}")
         if "media" in results:
             summary_parts.append(f"🖼️ Arquivos de mídia: {results['media']['total']}")
-        summary_parts.append(f"\n✅ {len(cloud_files)} arquivo(s) enviado(s) para Saved Messages")
+        summary_parts.append(
+            f"\n✅ {len(cloud_files)} arquivo(s) enviado(s) para Saved Messages"
+        )
 
-        await client.send_message('me', "\n".join(summary_parts))
+        await client.send_message("me", "\n".join(summary_parts))
         results["cloud_backup"] = True
         results["cloud_files"] = cloud_files
         logger.info(f"Backup enviado para Cloud Chat: {len(cloud_files)} arquivos")
 
     return results
-

@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from telethon import TelegramClient
 from telethon.errors import RPCError
 
-from .backup import backup_group_full, backup_group_with_media
+from .backup import backup_group_with_media
 from .cleaner import clean_all_dialogs
 from .interactive import interactive_main
 from .reports import (
@@ -311,11 +311,11 @@ async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
     try:
         entity = await client.get_entity(chat_id)
     except Exception as e:
-        logger.error(f"Erro ao resolver chat '{chat_id}': {e}")
+        logger.error("Erro ao resolver chat '%s': %s", chat_id, e)
         return
 
-    chat_title = getattr(entity, 'title', str(entity.id))
-    logger.info(f"Processando chat: {chat_title}")
+    chat_title = getattr(entity, "title", str(entity.id))
+    logger.info("Processando chat: %s", chat_title)
 
     output_dir = args.backup_output
     output_format = args.backup_format
@@ -323,14 +323,19 @@ async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
     # Processar tipos de mídia se especificados
     media_types = None
     if args.media_types:
-        media_types = args.media_types.split(',')
+        media_types = args.media_types.split(",")
 
     # Backup completo
     if args.backup_group:
         if args.download_media:
-            logger.info(f"Fazendo backup completo COM MÍDIA no formato '{output_format}'...")
+            logger.info(
+                f"Fazendo backup completo COM MÍDIA no formato '{output_format}'..."
+            )
             results = await backup_group_with_media(
-                client, entity, output_dir, output_format,
+                client,
+                entity,
+                output_dir,
+                output_format,
                 download_media=True,
                 media_types=media_types,
                 send_to_cloud=args.backup_to_cloud,
@@ -340,24 +345,30 @@ async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
             logger.info(f"Fazendo backup completo no formato '{output_format}'...")
             # Usar backup_group_with_media mesmo sem mídia para suportar send_to_cloud
             results = await backup_group_with_media(
-                client, entity, output_dir, output_format,
+                client,
+                entity,
+                output_dir,
+                output_format,
                 download_media=False,
                 send_to_cloud=args.backup_to_cloud,
                 max_concurrent_downloads=args.max_concurrent_downloads,
             )
 
-        logger.info(f"Backup concluído:")
+        logger.info("Backup concluído:")
         if "messages_count" in results:
-            logger.info(f"  • Mensagens: {results['messages_count']}")
+            logger.info("  • Mensagens: %s", results["messages_count"])
         if "participants_count" in results:
-            logger.info(f"  • Participantes: {results['participants_count']}")
+            logger.info("  • Participantes: %s", results["participants_count"])
         if "media" in results:
-            logger.info(f"  • Arquivos de mídia: {results['media']['total']} baixados")
-            for media_type, count in results['media'].items():
-                if media_type != 'total' and count > 0:
-                    logger.info(f"    - {media_type}: {count}")
+            logger.info("  • Arquivos de mídia: %s baixados", results["media"]["total"])
+            for media_type, count in results["media"].items():
+                if media_type != "total" and count > 0:
+                    logger.info("    - %s: %s", media_type, count)
         if "cloud_backup" in results and results["cloud_backup"]:
-            logger.info(f"  • Cloud Chat: {len(results.get('cloud_files', []))} arquivo(s) enviado(s) para Saved Messages")
+            logger.info(
+                "  • Cloud Chat: %s arquivo(s) enviado(s) para Saved Messages",
+                len(results.get("cloud_files", [])),
+            )
 
         if "messages_json" in results:
             logger.info(f"  • Mensagens JSON: {results['messages_json']}")
@@ -366,10 +377,12 @@ async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
 
     # Exportar apenas participantes
     elif args.export_members:
-        from .backup import export_participants_to_json, export_participants_to_csv
+        from .backup import export_participants_to_csv, export_participants_to_json
 
         timestamp = _get_timestamp()
-        safe_name = "".join(c for c in chat_title if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_name = "".join(
+            c for c in chat_title if c.isalnum() or c in (" ", "-", "_")
+        ).strip()
 
         if output_format in ("json", "both"):
             output_path = f"{output_dir}/{safe_name}_participants_{timestamp}.json"
@@ -383,10 +396,12 @@ async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
 
     # Exportar apenas mensagens
     elif args.export_messages:
-        from .backup import export_messages_to_json, export_messages_to_csv
+        from .backup import export_messages_to_csv, export_messages_to_json
 
         timestamp = _get_timestamp()
-        safe_name = "".join(c for c in chat_title if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_name = "".join(
+            c for c in chat_title if c.isalnum() or c in (" ", "-", "_")
+        ).strip()
 
         if output_format in ("json", "both"):
             output_path = f"{output_dir}/{safe_name}_messages_{timestamp}.json"
@@ -458,5 +473,10 @@ async def main() -> None:
             logger.error(format_rpc_error(error, auth_config))
 
 
-if __name__ == "__main__":
+def main_sync() -> None:
+    """Entry-point síncrono para console scripts."""
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    main_sync()

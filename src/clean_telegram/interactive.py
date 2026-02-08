@@ -78,7 +78,7 @@ async def interactive_main(client: TelegramClient) -> None:
                 style=CUSTOM_STYLE,
             ).ask_async()
 
-        if action == "exit":
+        if action is None or action == "exit":
             print("\n👋 Até logo!")
             break
         elif action == "clean":
@@ -271,16 +271,17 @@ async def interactive_stats(client: TelegramClient) -> None:
             dialogs_count += 1
             entity = dialog.entity
 
-            # Verificar tipo usando duck-typing
-            if hasattr(entity, "megagroup"):
+            # Importar tipos para isinstance
+            from telethon.tl.types import Channel, Chat, User
+
+            if isinstance(entity, Channel):
                 if getattr(entity, "broadcast", False):
                     channels_count += 1
                 else:
                     groups_count += 1
-            elif hasattr(entity, "participants_count"):
-                # Chat legado
+            elif isinstance(entity, Chat):
                 groups_count += 1
-            elif hasattr(entity, "first_name") or hasattr(entity, "bot"):
+            elif isinstance(entity, User):
                 users_count += 1
 
     # Exibir contagem com tabela colorida
@@ -453,7 +454,7 @@ async def interactive_backup(client: TelegramClient) -> None:
                 f"   • ☁️ Cloud Chat: {len(results.get('cloud_files', []))} arquivo(s) enviado(s) para Saved Messages"
             )
 
-        if "messages_json" in results:
+        if "messages_json" in results or "messages_csv" in results:
             print("\n📁 Arquivos salvos:")
             if "messages_json" in results:
                 print(f"   • Mensagens: {results['messages_json']}")

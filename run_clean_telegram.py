@@ -8,6 +8,7 @@ Funcionalidades:
 Use com cuidado e teste primeiro com --dry-run.
 """
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -18,5 +19,4 @@ sys.path.insert(0, str(src_path))
 from clean_telegram.cli import main
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())

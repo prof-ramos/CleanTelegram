@@ -28,11 +28,11 @@ session*
 relatorios/
 reports/
 backups/
-backups/media/
 *.csv
 *.json
 !package.json
-!pyproject.json
+!pyproject.toml
+repomix-output.xml
 *.txt
 !README.md
 !requirements.txt

@@ -5,7 +5,7 @@ Centraliza elementos visuais usando Rich para spinners, tabelas e formatação.
 
 import logging
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any, ContextManager, Generator
 
 from rich.console import Console
 from rich.panel import Panel
@@ -31,7 +31,7 @@ def suppress_telethon_logs() -> Generator[None, None, None]:
         telethon_logger.setLevel(original_level)
 
 
-def spinner(message: str, spinner_type: str = "dots"):
+def spinner(message: str, spinner_type: str = "dots") -> ContextManager[Any]:
     """Retorna context manager de status com spinner animado.
 
     Args:
@@ -72,9 +72,12 @@ def print_stats_table(
     table.add_column("Valor", justify="right")
 
     for key, value in data.items():
-        # Formatar números com separador de milhares
+        # Formatar números com separador de milhares (respeitando locale)
         if isinstance(value, int):
-            formatted_value = f"[bold]{value:,}[/]".replace(",", ".")
+            try:
+                formatted_value = f"[bold]{value:n}[/]"
+            except ValueError:
+                formatted_value = f"[bold]{value:,}[/]".replace(",", ".")
         else:
             formatted_value = str(value)
         table.add_row(key, formatted_value)

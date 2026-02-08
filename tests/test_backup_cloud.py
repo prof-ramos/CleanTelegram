@@ -13,8 +13,7 @@ from clean_telegram.backup import (
     send_backup_to_cloud,
 )
 
-
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class AsyncIteratorMock(Generic[T]):
@@ -50,7 +49,7 @@ def mock_chat_entity():
 
 
 @pytest.fixture
-def mock_telethon_client(tmp_path):
+def mock_telethon_client():
     """Cria um mock de TelegramClient com comportamentos realistas."""
     client = mock.AsyncMock()
 
@@ -82,11 +81,13 @@ def mock_telethon_client(tmp_path):
 
     async def mock_send_file(entity, file, caption=None, **kwargs):
         """Mock que rastreia arquivos enviados para cloud chat."""
-        sent_files.append({
-            "entity": entity,
-            "file": file,
-            "caption": caption,
-        })
+        sent_files.append(
+            {
+                "entity": entity,
+                "file": file,
+                "caption": caption,
+            }
+        )
         msg = mock.Mock()
         msg.id = len(sent_files)
         return msg
@@ -98,10 +99,12 @@ def mock_telethon_client(tmp_path):
 
     async def mock_send_message(entity, message, **kwargs):
         """Mock que rastreia mensagens enviadas."""
-        sent_messages.append({
-            "entity": entity,
-            "message": message,
-        })
+        sent_messages.append(
+            {
+                "entity": entity,
+                "message": message,
+            }
+        )
         msg = mock.Mock()
         msg.id = len(sent_messages)
         return msg
@@ -118,6 +121,7 @@ def mock_telethon_client(tmp_path):
 @pytest.fixture
 def mock_telethon_client_with_messages(mock_telethon_client):
     """Cria um client com mensagens de exemplo."""
+
     # Mock de mensagens
     class MockMessage:
         def __init__(self, msg_id, date, text=None, sender_id=None, media=None):
@@ -144,6 +148,7 @@ def mock_telethon_client_with_messages(mock_telethon_client):
 @pytest.fixture
 def mock_telethon_client_with_participants(mock_telethon_client):
     """Cria um client com participantes de exemplo."""
+
     # Mock de participantes
     class MockParticipant:
         def __init__(self, user_id, first_name, last_name="", username=None):
@@ -172,7 +177,9 @@ def mock_telethon_client_with_participants(mock_telethon_client):
 
 
 @pytest.fixture
-def mock_client_with_both(mock_telethon_client_with_messages, mock_telethon_client_with_participants):
+def mock_client_with_both(
+    mock_telethon_client_with_messages, mock_telethon_client_with_participants
+):
     """Client completo com mensagens e participantes."""
     # Criar novo client combinando ambos
     combined = mock.AsyncMock()
@@ -201,11 +208,13 @@ def mock_client_with_both(mock_telethon_client_with_messages, mock_telethon_clie
     combined._test_sent_messages = sent_messages
 
     # Copiar atributos importantes
-    for attr in ['get_me', 'iter_messages']:
+    for attr in ["get_me", "iter_messages"]:
         setattr(combined, attr, getattr(mock_telethon_client_with_messages, attr))
 
     # Sobrescrever iter_participants com o do client de participantes
-    combined.iter_participants = mock_telethon_client_with_participants.iter_participants
+    combined.iter_participants = (
+        mock_telethon_client_with_participants.iter_participants
+    )
 
     return combined
 
@@ -227,16 +236,16 @@ class TestSendBackupToCloud:
     """Testes da função send_backup_to_cloud."""
 
     @pytest.mark.asyncio
-    async def test_should_send_file_to_saved_messages(self, mock_telethon_client, tmp_path):
+    async def test_should_send_file_to_saved_messages(
+        self, mock_telethon_client, tmp_path
+    ):
         """Testa envio de arquivo para Saved Messages ('me')."""
         # Criar arquivo de teste
         test_file = tmp_path / "test_backup.json"
         test_file.write_text('{"test": "data"}')
 
         await send_backup_to_cloud(
-            mock_telethon_client,
-            str(test_file),
-            "📦 Test Backup"
+            mock_telethon_client, str(test_file), "📦 Test Backup"
         )
 
         # Verificar que send_file foi chamado com 'me' como entidade
@@ -247,10 +256,12 @@ class TestSendBackupToCloud:
         assert sent["caption"] == "📦 Test Backup"
 
     @pytest.mark.asyncio
-    async def test_should_include_caption_with_emoji(self, mock_telethon_client, tmp_path):
+    async def test_should_include_caption_with_emoji(
+        self, mock_telethon_client, tmp_path
+    ):
         """Testa que caption inclui emojis para organização."""
         test_file = tmp_path / "test.json"
-        test_file.write_text('{}')
+        test_file.write_text("{}")
 
         caption = "📦 Backup: Grupo Teste - Mensagens (100 msgs)"
         await send_backup_to_cloud(mock_telethon_client, str(test_file), caption)
@@ -351,7 +362,7 @@ class TestBackupGroupWithCloud:
         temp_backup_dir,
     ):
         """Testa envio de mensagem de resumo para Cloud Chat."""
-        results = await backup_group_with_media(
+        _results = await backup_group_with_media(
             mock_client_with_both,
             mock_chat_entity,
             temp_backup_dir,
@@ -401,6 +412,7 @@ class TestBackupGroupWithCloud:
         temp_backup_dir,
     ):
         """Testa que resumo inclui contagem de mídia quando baixada."""
+
         # Mock de download_media_from_chat
         async def mock_download(*args, **kwargs):
             return {
@@ -410,10 +422,9 @@ class TestBackupGroupWithCloud:
             }
 
         with mock.patch(
-            "clean_telegram.backup.download_media_from_chat",
-            side_effect=mock_download
+            "clean_telegram.backup.download_media_from_chat", side_effect=mock_download
         ):
-            results = await backup_group_with_media(
+            _results = await backup_group_with_media(
                 mock_client_with_both,
                 mock_chat_entity,
                 temp_backup_dir,
@@ -462,8 +473,15 @@ class TestBackupGroupWithCloud:
             # Não cria arquivo
             return 0
 
-        with mock.patch("clean_telegram.backup.export_messages_to_json", side_effect=mock_export_msgs):
-            with mock.patch("clean_telegram.backup.export_participants_to_json", side_effect=mock_export_parts):
+        # Mockar as funções corretas que agora são usadas por backup_group_with_media
+        with mock.patch(
+            "clean_telegram.backup.export_messages_to_json_streaming",
+            side_effect=mock_export_msgs,
+        ):
+            with mock.patch(
+                "clean_telegram.backup.export_participants_to_json_streaming",
+                side_effect=mock_export_parts,
+            ):
                 results = await backup_group_with_media(
                     mock_telethon_client,
                     mock_chat_entity,
@@ -475,7 +493,7 @@ class TestBackupGroupWithCloud:
         # Como os arquivos não foram criados, nenhum arquivo de backup foi enviado
         # Apenas a mensagem de resumo pode ter sido enviada
         # Verificar que cloud_files está vazio (nenhum arquivo de backup enviado)
-        assert results.get("cloud_files", []) == [] or len(results.get("cloud_files", [])) == 0
+        assert results.get("cloud_files", []) == []
 
 
 # =============================================================================
@@ -518,28 +536,27 @@ class TestBackupCloudCLIIntegration:
 
         mock_telethon_client.get_entity = mock_get_entity
 
-        # Mock exports para criar arquivos
-        test_msg_file = Path(temp_backup_dir) / "Grupo_de_Teste_messages_*.json"
-
         async def mock_export_msgs(client, entity, path):
             # Criar arquivo JSON
-            from pathlib import Path
-            import json
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            with open(path, 'w') as f:
+            with open(path, "w") as f:
                 json.dump({"messages": []}, f)
             return 0
 
         async def mock_export_parts(client, entity, path):
-            from pathlib import Path
-            import json
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            with open(path, 'w') as f:
+            with open(path, "w") as f:
                 json.dump({"participants": []}, f)
             return 0
 
-        with mock.patch("clean_telegram.backup.export_messages_to_json", side_effect=mock_export_msgs):
-            with mock.patch("clean_telegram.backup.export_participants_to_json", side_effect=mock_export_parts):
+        with mock.patch(
+            "clean_telegram.backup.export_messages_to_json",
+            side_effect=mock_export_msgs,
+        ):
+            with mock.patch(
+                "clean_telegram.backup.export_participants_to_json",
+                side_effect=mock_export_parts,
+            ):
                 await cli.run_backup(args, mock_telethon_client)
 
         # Verificar que arquivos foram enviados para cloud
@@ -562,20 +579,17 @@ class TestBackupCloudErrorHandling:
         temp_backup_dir,
     ):
         """Testa que erro ao enviar arquivo é tratado adequadamente."""
+
         # Mock para criar arquivos locais
         async def mock_export_msgs(client, entity, path):
-            from pathlib import Path
-            import json
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            with open(path, 'w') as f:
+            with open(path, "w") as f:
                 json.dump({"messages": []}, f)
             return 0
 
         async def mock_export_parts(client, entity, path):
-            from pathlib import Path
-            import json
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            with open(path, 'w') as f:
+            with open(path, "w") as f:
                 json.dump({"participants": []}, f)
             return 0
 
@@ -585,8 +599,14 @@ class TestBackupCloudErrorHandling:
 
         mock_telethon_client.send_file = mock_send_file_error
 
-        with mock.patch("clean_telegram.backup.export_messages_to_json", side_effect=mock_export_msgs):
-            with mock.patch("clean_telegram.backup.export_participants_to_json", side_effect=mock_export_parts):
+        with mock.patch(
+            "clean_telegram.backup.export_messages_to_json",
+            side_effect=mock_export_msgs,
+        ):
+            with mock.patch(
+                "clean_telegram.backup.export_participants_to_json",
+                side_effect=mock_export_parts,
+            ):
                 # A função deve propagar o erro
                 with pytest.raises(Exception, match="Network error"):
                     await backup_group_with_media(
@@ -617,5 +637,9 @@ class TestBackupCloudErrorHandling:
             send_to_cloud=True,
         )
 
-        # Deve completar sem erro
+        # Deve completar sem erro e incluir caracteres especiais no caption
         assert results["cloud_backup"] is True
+        sent_files = mock_client_with_both._test_sent_files
+        captions = [f["caption"] for f in sent_files]
+        # Verificar que algum caption contém o título especial
+        assert any("Grupo" in c for c in captions)
