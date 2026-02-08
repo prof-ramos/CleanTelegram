@@ -50,10 +50,10 @@ cp .env.example .env
 
 O projeto suporta dois modos de operação, detectados automaticamente pelo `.env`:
 
-1.  **Modo Usuário** (Padrão): Requer login interativo (número + código). Acesso total à sua conta pessoal.
-    - Deixe `BOT_TOKEN` em branco no `.env`.
-2.  **Modo Bot**: Usa `BOT_TOKEN`. Ações limitadas às permissões do bot nos chats.
-    - Preencha `BOT_TOKEN` no `.env`.
+1. **Modo Usuário** (Padrão): Requer login interativo (número + código). Acesso total à sua conta pessoal.
+   - Deixe `BOT_TOKEN` em branco no `.env`.
+2. **Modo Bot**: Usa `BOT_TOKEN`. Ações limitadas às permissões do bot nos chats.
+   - Preencha `BOT_TOKEN` no `.env`.
 
 ## 🎮 Uso
 
