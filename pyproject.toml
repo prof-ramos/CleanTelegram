@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clean-telegram"
+version = "1.1.0"
+description = "Script para limpar conta Telegram via Telethon"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "telethon==1.42.0",
+    "python-dotenv==1.2.1",
+    "questionary==2.1.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]

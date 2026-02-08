@@ -1,6 +1,78 @@
+# Ambiente virtual
 .venv/
+venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+
+# Build e distribuição
+build/
+dist/
+*.egg-info/
+src/*.egg-info/
+*.egg
+
+# Variáveis de ambiente
 .env
+.env.local
+.env.*.local
+
+# Sessões do Telegram (NECOM commits sessões!)
 *.session
 *.session-journal
+session*
+
+# Relatórios e estatísticas (NUNCA commits dados reais!)
+relatorios/
+reports/
+backups/
+backups/media/
+*.csv
+*.json
+!package.json
+!pyproject.json
+*.txt
+!README.md
+!requirements.txt
+!LICENSE
+
+# Mídia baixada
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.mp3
+*.ogg
+*.webp
+*.pdf
+*.doc
+*.docx
+*.zip
+*.tar
+*.gz
+
+# Testes e cobertura
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# IDEs e editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+
+# Outros
+*.bak
+*.tmp
