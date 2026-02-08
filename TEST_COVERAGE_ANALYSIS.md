@@ -6,31 +6,41 @@ This analysis covers both the current `main` branch and the incoming PR #3 (`fea
 
 ## Part 1: Current `main` Branch
 
-**Overall coverage: 59%** (478 of 1,160 statements missed)
+### Before improvements
 
-| Module | Stmts | Miss | Coverage | Status |
-|--------|-------|------|----------|--------|
-| `__init__.py` | 1 | 0 | 100% | Fully covered |
-| `__main__.py` | 6 | 6 | 0% | No tests |
-| `backup.py` | 477 | 173 | 64% | Partial |
-| `cleaner.py` | 74 | 11 | 85% | Good |
-| `cli.py` | 204 | 112 | 45% | Low |
-| `interactive.py` | 182 | 139 | 24% | Very low |
-| `reports.py` | 170 | 15 | 91% | Good |
-| `ui.py` | 46 | 22 | 52% | Low |
+**Overall coverage: 59%** (478 of 1,160 statements missed) | 66 tests (65 passing, 1 failing)
 
-**Existing tests:** 66 total (65 passing, 1 failing)
+### After improvements
 
-The failing test (`test_should_include_media_count_in_summary`) patches `download_media_from_chat` but the production code calls `download_media_parallel` instead, so the mock never takes effect.
+**Overall coverage: 80%** (231 of 1,160 statements missed) | 147 tests (all passing)
 
-### Key gaps on `main`
+| Module | Stmts | Before | After | Change |
+|--------|-------|--------|-------|--------|
+| `__init__.py` | 1 | 100% | 100% | -- |
+| `__main__.py` | 6 | 0% | 0% | (thin wrapper) |
+| `backup.py` | 477 | 64% | 64% | -- |
+| `cleaner.py` | 74 | 85% | **97%** | +12pp |
+| `cli.py` | 204 | 45% | **99%** | +54pp |
+| `interactive.py` | 182 | 24% | **77%** | +53pp |
+| `reports.py` | 170 | 91% | **97%** | +6pp |
+| `ui.py` | 46 | 52% | **100%** | +48pp |
 
-1. **`cli.py` (45%)** -- `parse_args()`, `env_int()`, `confirm_action()`, `run_report()`, `run_clean()`, `run_backup()`, and `main()` are all untested.
-2. **`interactive.py` (24%)** -- `interactive_clean()`, `interactive_reports()`, `interactive_stats()` have zero tests. Only basic cancellation paths of `interactive_backup()` are covered.
-3. **`backup.py` (64%)** -- `export_messages_to_json()`, `export_messages_to_csv()`, `export_participants_to_json()`, `export_participants_to_csv()`, `download_media_from_chat()`, and the `ChatAdminRequiredError` path are untested.
-4. **`ui.py` (52%)** -- Presentation-only functions (`print_header`, `print_stats_table`, etc.) are untested but low risk.
-5. **`cleaner.py` (85%)** -- Only the unknown-entity-type fallback and the `RPCError`/`Exception` handler branches in the retry loop are missing.
-6. **Infrastructure** -- `AsyncIteratorMock` is duplicated in 3 test files; mock client/entity fixtures are duplicated across test modules.
+### What was fixed and added
+
+**Fixed:** `test_should_include_media_count_in_summary` -- was patching `download_media_from_chat` instead of `download_media_parallel`.
+
+**New test files:**
+- `test_cli_extended.py` -- env_int, parse_args, confirm_action, run_report, run_clean, run_backup, main() integration
+- `test_cleaner_extended.py` -- unknown entity type, RPCError/Exception handlers
+- `test_reports_extended.py` -- generate_all_reports, contacts default path, _safe_getattr
+- `test_interactive_extended.py` -- interactive_clean, interactive_reports, interactive_stats, menu dispatch, backup happy path
+- `test_ui.py` -- suppress_telethon_logs, print_header, print_stats_table, all print_* functions
+
+### Remaining gaps on `main`
+
+1. **`backup.py` (64%)** -- The largest remaining gap. Untested: `export_messages_to_json()`, `export_messages_to_csv()`, `export_participants_to_json()`, `export_participants_to_csv()`, `download_media_from_chat()`, `backup_group_full()`, and the `ChatAdminRequiredError` path.
+2. **`interactive.py` (77%)** -- Some deeper flows remain: custom path input for reports, media type "custom" selection in backup, the backup result display with media counts.
+3. **`cleaner.py` (97%)** -- Only 2 lines uncovered (FloodWait sleep path in retry loop).
 
 ---
 

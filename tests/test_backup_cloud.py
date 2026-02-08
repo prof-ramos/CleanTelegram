@@ -413,7 +413,7 @@ class TestBackupGroupWithCloud:
     ):
         """Testa que resumo inclui contagem de mídia quando baixada."""
 
-        # Mock de download_media_from_chat
+        # Mock de download_media_parallel (usado por backup_group_with_media)
         async def mock_download(*args, **kwargs):
             return {
                 "photo": 5,
@@ -422,7 +422,7 @@ class TestBackupGroupWithCloud:
             }
 
         with mock.patch(
-            "clean_telegram.backup.download_media_from_chat", side_effect=mock_download
+            "clean_telegram.backup.download_media_parallel", side_effect=mock_download
         ):
             _results = await backup_group_with_media(
                 mock_client_with_both,
