@@ -42,6 +42,9 @@ The content is organized as follows:
 <directory_structure>
 .hive/
   issues.jsonl
+.omc/
+  state/
+    agent-replay-250b2496-3ab4-4b18-81fc-fa3018b35aaf.jsonl
 src/
   clean_telegram/
     __init__.py
@@ -56,12 +59,14 @@ tests/
   __init__.py
   conftest.py
   test_backup_cloud.py
+  test_cleaner.py
   test_cli_auth.py
   test_interactive_backup.py
   test_performance.py
   test_reports.py
 .env.example
 .gitignore
+CLAUDE.md
 pyproject.toml
 README.md
 requirements.txt
@@ -71,12 +76,1037 @@ run_clean_telegram.py
 <files>
 This section contains the contents of the repository's files.
 
+<file path=".omc/state/agent-replay-250b2496-3ab4-4b18-81fc-fa3018b35aaf.jsonl">
+{"t":0,"agent":"a3733cc","agent_type":"Explore","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a3733cc","agent_type":"Explore","event":"agent_stop","success":true,"duration_ms":157708}
+{"t":0,"agent":"a649aaf","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"adbe59c","agent_type":"repomix-explorer:explorer","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"adbe59c","agent_type":"repomix-explorer:explorer","event":"agent_stop","success":true,"duration_ms":66704}
+{"t":0,"agent":"a2cdfdb","agent_type":"unknown","event":"agent_stop","success":true}
+</file>
+
+<file path="CLAUDE.md">
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+CleanTelegram is a Python CLI tool for managing and cleaning Telegram accounts using Telethon. It automates destructive actions (deleting conversations, leaving groups) while providing backup capabilities and reporting features.
+
+## Development Commands
+
+### Installation
+```bash
+# With uv (recommended)
+uv sync
+uv pip install -e .
+
+# Or with pip
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+### Testing
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific test file
+uv run pytest tests/test_backup_cloud.py
+
+# Run with coverage
+uv run pytest --cov=clean_telegram
+```
+
+### Running the Application
+```bash
+# Interactive mode (recommended for testing)
+cleantelegram --interactive
+
+# Direct module execution
+python -m clean_telegram
+
+# Development runner
+python run_clean_telegram.py
+```
+
+## Architecture
+
+### Module Structure
+- `cli.py` - Main entry point, argument parsing, command routing, auth configuration
+- `client.py` - Telegram client management (Note: file may not exist, client is created in cli.py)
+- `backup.py` - Backup and export functionality (messages, participants, media, cloud upload)
+- `cleaner.py` - Conversation and group cleaning logic
+- `interactive.py` - Interactive menu system using Rich/Questionary
+- `reports.py` - Report generation (groups, contacts) in CSV/JSON/TXT formats
+- `ui.py` - Shared UI components and helpers
+
+### Authentication Modes
+The application supports two operation modes, automatically detected via `.env`:
+1. **User Mode** (default): Requires `API_ID` and `API_HASH`, interactive login with phone + code
+2. **Bot Mode**: Additionally requires `BOT_TOKEN`, actions limited to bot permissions
+
+### Async Pattern
+The entire application is built on asyncio. All Telegram API calls are async:
+- Entry point: `main()` async function in `cli.py`
+- Console scripts call `main_sync()` which wraps `asyncio.run(main())`
+
+### Test Setup
+- Tests use `pytest` with `pytest-asyncio` for async test support
+- `tests/conftest.py` modifies `sys.path` to ensure `src/` is imported correctly
+- When adding new tests, ensure the test file respects the path configuration
+
+### Configuration
+- Environment variables loaded via `python-dotenv` from `.env` file
+- Required: `API_ID`, `API_HASH`
+- Optional: `BOT_TOKEN`, `SESSION_NAME`, `BOT_SESSION_NAME`
+
+### Optional Dependencies
+- `orjson`: Faster JSON processing (2-3x faster than stdlib), installed via `pip install -e ".[optional]"`
+
+### Safety Features
+- `--dry-run` flag for safe testing without making changes
+- Confirmation prompts for destructive actions
+- Bot permission warnings when operations require elevated permissions
+
+## Key Entry Points
+
+1. **Console scripts**: `cleantelegram` or `clean-telegram` → `clean_telegram.cli:main_sync`
+2. **Module**: `python -m clean_telegram` → `clean_telegram.__main__`
+3. **Interactive**: `cleantelegram --interactive` → `clean_telegram.interactive:interactive_main`
+</file>
+
 <file path=".hive/issues.jsonl">
 {"id":"cell--jyqnh-mld2kbgtfsm","title":"Revisão da Cobertura de Testes do CleanTelegram","description":"Análise completa da cobertura de testes identificando lacunas, sugerindo melhorias e recomendando estratégias","status":"open","priority":1,"issue_type":"epic","created_at":"2026-02-08T01:33:26.669Z","updated_at":"2026-02-08T01:33:26.669Z","dependencies":[],"labels":[],"comments":[]}
 {"id":"cell--jyqnh-mld2kbh1qs3","title":"Identificar componentes não testados","status":"open","priority":3,"issue_type":"task","created_at":"2026-02-08T01:33:26.677Z","updated_at":"2026-02-08T01:33:26.677Z","parent_id":"cell--jyqnh-mld2kbgtfsm","dependencies":[],"labels":[],"comments":[]}
 {"id":"cell--jyqnh-mld2kbh3xyj","title":"Sugerir casos de teste adicionais","status":"open","priority":3,"issue_type":"task","created_at":"2026-02-08T01:33:26.679Z","updated_at":"2026-02-08T01:33:26.679Z","parent_id":"cell--jyqnh-mld2kbgtfsm","dependencies":[],"labels":[],"comments":[]}
 {"id":"cell--jyqnh-mld2kbh4nrw","title":"Revisar a qualidade do teste","status":"open","priority":2,"issue_type":"task","created_at":"2026-02-08T01:33:26.680Z","updated_at":"2026-02-08T01:33:26.680Z","parent_id":"cell--jyqnh-mld2kbgtfsm","dependencies":[],"labels":[],"comments":[]}
 {"id":"cell--jyqnh-mld2kbh5ad6","title":"Recomendar estratégias de teste","status":"open","priority":2,"issue_type":"task","created_at":"2026-02-08T01:33:26.681Z","updated_at":"2026-02-08T01:33:26.681Z","parent_id":"cell--jyqnh-mld2kbgtfsm","dependencies":[],"labels":[],"comments":[]}
+</file>
+
+<file path="src/clean_telegram/__init__.py">
+"""CleanTelegram: script para limpar conta Telegram via Telethon.
+
+Este pacote fornece funcionalidades para:
+- Apagar históricos de conversa
+- Sair de grupos/canais
+- Gerar relatórios de grupos, canais e contatos
+"""
+
+__version__ = "1.1.0"
+</file>
+
+<file path="src/clean_telegram/__main__.py">
+"""Entry point para execução como módulo Python.
+
+Usage:
+    python -m clean_telegram --help
+    python -m clean_telegram --report all
+"""
+
+import asyncio
+
+from .cli import main as _main_async
+
+
+def main() -> None:
+    """Entry point síncrono para entry points de console."""
+    asyncio.run(_main_async())
+
+
+if __name__ == "__main__":
+    main()
+</file>
+
+<file path="src/clean_telegram/reports.py">
+"""Módulo de geração de relatórios para CleanTelegram.
+
+Gera relatórios de grupos, canais e contatos em diversos formatos.
+"""
+
+import csv
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from telethon import TelegramClient
+from telethon.tl.types import Channel, Chat, User
+
+
+def _get_timestamp() -> str:
+    """Retorna timestamp atual formatado para nomes de arquivo."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def _safe_getattr(obj: Any, attr: str, default: Any = None) -> Any:
+    """getattr seguro que retorna default se AttributeError ocorrer."""
+    try:
+        return getattr(obj, attr, default)
+    except (AttributeError, TypeError):
+        return default
+
+
+def _is_channel(entity: Any) -> bool:
+    """Verifica se a entidade é um Channel (tem atributo megagroup)."""
+    return hasattr(entity, "megagroup") or hasattr(entity, "broadcast")
+
+
+def _is_chat(entity: Any) -> bool:
+    """Verifica se a entidade é um Chat (grupo legado, tem participants_count mas não megagroup)."""
+    return hasattr(entity, "participants_count") and not hasattr(entity, "megagroup")
+
+
+def _is_user(entity: Any) -> bool:
+    """Verifica se a entidade é um User (tem first_name ou bot).
+
+    Nota: User pode ter username mas não megagroup/broadcast (Channel)
+    nem apenas participants_count (Chat legado).
+    """
+    return (
+        hasattr(entity, "first_name")
+        or hasattr(entity, "bot")
+        or (hasattr(entity, "username") and not hasattr(entity, "megagroup"))
+    ) and not _is_channel(entity) and not _is_chat(entity)
+
+
+async def generate_groups_channels_report(
+    client: TelegramClient,
+    output_path: str | None = None,
+    output_format: str = "csv",
+) -> str:
+    """Gera relatório de grupos e canais.
+
+    Args:
+        client: Cliente Telethon conectado.
+        output_path: Caminho do arquivo de saída. Se None, usa padrão com timestamp.
+        output_format: Formato do relatório (csv, json ou txt).
+
+    Returns:
+        Caminho do arquivo gerado.
+    """
+    # Coletar dados
+    items = []
+
+    async for dialog in client.iter_dialogs():
+        entity = dialog.entity
+
+        if not (_is_channel(entity) or _is_chat(entity)):
+            continue
+
+        item: dict[str, Any] = {
+            "title": dialog.name or "(sem nome)",
+            "id": entity.id,
+        }
+
+        if _is_channel(entity):
+            item["type"] = "Channel"
+            item["username"] = _safe_getattr(entity, "username", "")
+            item["participants_count"] = _safe_getattr(entity, "participants_count", 0)
+            item["is_megagroup"] = _safe_getattr(entity, "megagroup", False)
+            item["is_broadcast"] = _safe_getattr(entity, "broadcast", False)
+            item["creator"] = _safe_getattr(entity, "creator", False)
+            item["admin_rights"] = _safe_getattr(entity, "admin_rights") is not None
+            item["date"] = (
+                _safe_getattr(entity, "date").isoformat()
+                if _safe_getattr(entity, "date")
+                else ""
+            )
+        else:  # Chat (grupo legado)
+            item["type"] = "Chat"
+            item["username"] = ""
+            item["participants_count"] = _safe_getattr(entity, "participants_count", 0)
+            item["is_megagroup"] = False
+            item["is_broadcast"] = False
+            item["creator"] = _safe_getattr(entity, "creator", False)
+            item["admin_rights"] = False
+            item["date"] = ""
+
+        items.append(item)
+
+    # Validar formato antes de processar
+    valid_formats = {"csv", "json", "txt"}
+    if output_format not in valid_formats:
+        raise ValueError(f"Formato não suportado: {output_format}. Use um de: {', '.join(sorted(valid_formats))}")
+
+    # Determinar caminho de saída
+    if output_path is None:
+        timestamp = _get_timestamp()
+        suffix = output_format  # O formato já é a extensão
+        output_path = f"relatorios/groups_channels_{timestamp}.{suffix}"
+
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Gerar relatório no formato solicitado
+    if output_format == "csv":
+        _write_csv_report(items, output_file)
+    elif output_format == "json":
+        _write_json_report(items, output_file, report_type="groups_channels")
+    elif output_format == "txt":
+        _write_txt_report(items, output_file, report_type="groups_channels")
+
+    return str(output_file)
+
+
+async def generate_contacts_report(
+    client: TelegramClient,
+    output_path: str | None = None,
+    output_format: str = "csv",
+) -> str:
+    """Gera relatório de contatos e usuários.
+
+    Args:
+        client: Cliente Telethon conectado.
+        output_path: Caminho do arquivo de saída. Se None, usa padrão com timestamp.
+        output_format: Formato do relatório (csv, json ou txt).
+
+    Returns:
+        Caminho do arquivo gerado.
+    """
+    # Coletar dados
+    items = []
+
+    async for dialog in client.iter_dialogs():
+        entity = dialog.entity
+
+        if not _is_user(entity):
+            continue
+
+        # Formatar nome
+        first_name = _safe_getattr(entity, "first_name", "")
+        last_name = _safe_getattr(entity, "last_name", "")
+        full_name = f"{first_name} {last_name}".strip() or first_name or "(sem nome)"
+
+        # Status
+        status = _safe_getattr(entity, "status", None)
+        status_str = ""
+        if status:
+            if hasattr(status, "was_online"):
+                status_str = f"Último acesso: {_format_status(status)}"
+            elif hasattr(status, "expires"):
+                status_str = "Online"
+            else:
+                status_str = str(type(status).__name__)
+
+        item: dict[str, Any] = {
+            "name": full_name,
+            "id": entity.id,
+            "username": f"@{_safe_getattr(entity, 'username', '')}" if _safe_getattr(entity, "username") else "",
+            "is_bot": _safe_getattr(entity, "bot", False),
+            "is_verified": _safe_getattr(entity, "verified", False),
+            "is_premium": _safe_getattr(entity, "premium", False),
+            "status": status_str,
+            "phone": _safe_getattr(entity, "phone", ""),
+        }
+
+        items.append(item)
+
+    # Validar formato antes de processar
+    valid_formats = {"csv", "json", "txt"}
+    if output_format not in valid_formats:
+        raise ValueError(f"Formato não suportado: {output_format}. Use um de: {', '.join(sorted(valid_formats))}")
+
+    # Determinar caminho de saída
+    if output_path is None:
+        timestamp = _get_timestamp()
+        suffix = output_format  # O formato já é a extensão
+        output_path = f"relatorios/contacts_{timestamp}.{suffix}"
+
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Gerar relatório no formato solicitado
+    if output_format == "csv":
+        _write_csv_report(items, output_file, report_type="contacts")
+    elif output_format == "json":
+        _write_json_report(items, output_file, report_type="contacts")
+    elif output_format == "txt":
+        _write_txt_report(items, output_file, report_type="contacts")
+    else:
+        # Nunca deve chegar aqui devido à validação acima
+        raise ValueError(f"Formato não suportado: {output_format}")
+
+    return str(output_file)
+
+
+def _format_status(status) -> str:
+    """Formata status de usuário para exibição."""
+    if hasattr(status, "was_online") and status.was_online:
+        return status.was_online.strftime("%d/%m/%Y %H:%M")
+    return "Desconhecido"
+
+
+def _write_csv_report(items: list[dict[str, Any]], output_file: Path, report_type: str = "groups_channels") -> None:
+    """Escreve relatório em formato CSV."""
+    if not items:
+        # Criar arquivo vazio com cabeçalho
+        with open(output_file, "w", newline="", encoding="utf-8") as f:
+            if report_type == "groups_channels":
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=[
+                        "Tipo",
+                        "Nome",
+                        "ID",
+                        "Username",
+                        "Participantes",
+                        "Megagrupo",
+                        "Broadcast",
+                        "Criador",
+                        "Admin",
+                        "Data Criação",
+                    ],
+                )
+            else:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=[
+                        "Nome",
+                        "ID",
+                        "Username",
+                        "Bot",
+                        "Verificado",
+                        "Premium",
+                        "Status",
+                        "Telefone",
+                    ],
+                )
+            writer.writeheader()
+        return
+
+    with open(output_file, "w", newline="", encoding="utf-8") as f:
+        if report_type == "groups_channels":
+            fieldnames = [
+                "Tipo",
+                "Nome",
+                "ID",
+                "Username",
+                "Participantes",
+                "Megagrupo",
+                "Broadcast",
+                "Criador",
+                "Admin",
+                "Data Criação",
+            ]
+            rows = [
+                {
+                    "Tipo": item["type"],
+                    "Nome": item["title"],
+                    "ID": item["id"],
+                    "Username": item["username"],
+                    "Participantes": item["participants_count"],
+                    "Megagrupo": "Sim" if item["is_megagroup"] else "Não",
+                    "Broadcast": "Sim" if item["is_broadcast"] else "Não",
+                    "Criador": "Sim" if item["creator"] else "Não",
+                    "Admin": "Sim" if item["admin_rights"] else "Não",
+                    "Data Criação": item["date"],
+                }
+                for item in items
+            ]
+        else:  # contacts
+            fieldnames = [
+                "Nome",
+                "ID",
+                "Username",
+                "Bot",
+                "Verificado",
+                "Premium",
+                "Status",
+                "Telefone",
+            ]
+            rows = [
+                {
+                    "Nome": item["name"],
+                    "ID": item["id"],
+                    "Username": item["username"],
+                    "Bot": "Sim" if item["is_bot"] else "Não",
+                    "Verificado": "Sim" if item["is_verified"] else "Não",
+                    "Premium": "Sim" if item["is_premium"] else "Não",
+                    "Status": item["status"],
+                    "Telefone": item["phone"],
+                }
+                for item in items
+            ]
+
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _write_json_report(items: list[dict[str, Any]], output_file: Path, report_type: str) -> None:
+    """Escreve relatório em formato JSON."""
+    report = {
+        "generated_at": datetime.now().isoformat(),
+        "report_type": report_type,
+        "total": len(items),
+        "items": items,
+    }
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+
+
+def _write_txt_report(items: list[dict[str, Any]], output_file: Path, report_type: str) -> None:
+    """Escreve relatório em formato TXT formatado."""
+    lines: list[str] = []
+
+    if report_type == "groups_channels":
+        title = "RELATÓRIO DE GRUPOS E CANAIS"
+    else:
+        title = "RELATÓRIO DE CONTATOS"
+
+    lines.append("=" * 50)
+    lines.append(title)
+    lines.append(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}")
+    lines.append(f"Total: {len(items)} item(ns)")
+    lines.append("=" * 50)
+    lines.append("")
+
+    if not items:
+        lines.append("(Nenhum item encontrado)")
+    else:
+        for i, item in enumerate(items, 1):
+            if report_type == "groups_channels":
+                lines.append(f"[{i}] {item['type']} - {item['title']}")
+                if item["username"]:
+                    lines.append(f"    Username: {item['username']}")
+                lines.append(f"    ID: {item['id']}")
+                lines.append(f"    Participantes: {item['participants_count']}")
+                if item["type"] == "Channel":
+                    lines.append(f"    Megagrupo: {'Sim' if item['is_megagroup'] else 'Não'}")
+                    lines.append(f"    Broadcast: {'Sim' if item['is_broadcast'] else 'Não'}")
+                lines.append(f"    Criador: {'Sim' if item['creator'] else 'Não'}")
+                lines.append(f"    Admin: {'Sim' if item['admin_rights'] else 'Não'}")
+                if item["date"]:
+                    lines.append(f"    Data Criação: {item['date']}")
+            else:  # contacts
+                lines.append(f"[{i}] {item['name']}")
+                if item["username"]:
+                    lines.append(f"    Username: {item['username']}")
+                lines.append(f"    ID: {item['id']}")
+                lines.append(f"    Bot: {'Sim' if item['is_bot'] else 'Não'}")
+                lines.append(f"    Verificado: {'Sim' if item['is_verified'] else 'Não'}")
+                lines.append(f"    Premium: {'Sim' if item['is_premium'] else 'Não'}")
+                if item["status"]:
+                    lines.append(f"    Status: {item['status']}")
+                if item["phone"]:
+                    lines.append(f"    Telefone: {item['phone']}")
+
+            lines.append("")
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+async def generate_all_reports(
+    client: TelegramClient,
+    output_format: str = "csv",
+) -> dict[str, str]:
+    """Gera todos os relatórios disponíveis.
+
+    Args:
+        client: Cliente Telethon conectado.
+        output_format: Formato dos relatórios (csv, json ou txt).
+
+    Returns:
+        Dicionário com tipo de relatório e caminho do arquivo gerado.
+    """
+    results = {}
+
+    # Gerar relatório de grupos e canais
+    groups_path = await generate_groups_channels_report(client, output_format=output_format)
+    results["groups_channels"] = groups_path
+
+    # Gerar relatório de contatos
+    contacts_path = await generate_contacts_report(client, output_format=output_format)
+    results["contacts"] = contacts_path
+
+    return results
+</file>
+
+<file path="tests/__init__.py">
+"""Testes para CleanTelegram."""
+</file>
+
+<file path="tests/conftest.py">
+"""Configuração de testes para CleanTelegram."""
+
+import sys
+from pathlib import Path
+
+# Adicionar src/ ao path ANTES de qualquer outra coisa para importar o módulo correto
+src_path = Path(__file__).parent.parent / "src"
+if src_path.exists() and src_path.is_dir():
+    sys.path.insert(0, str(src_path))
+else:
+    raise RuntimeError(f"Diretório src/ não encontrado em {src_path}. Verifique a estrutura do projeto.")
+
+# Remover o diretório raiz do path para evitar conflito
+root_path = Path(__file__).parent.parent
+root_path_str = str(root_path)
+# Remover TODAS as ocorrências, não apenas a primeira
+sys.path = [p for p in sys.path if p != root_path_str]
+</file>
+
+<file path="tests/test_cleaner.py">
+"""Testes para o módulo cleaner.py."""
+
+from unittest import mock
+
+import pytest
+from telethon.errors import FloodWaitError, RPCError
+from telethon.tl.functions.channels import LeaveChannelRequest
+from telethon.tl.functions.messages import DeleteChatUserRequest, DeleteHistoryRequest
+from telethon.tl.types import Channel, Chat, User
+
+from clean_telegram import cleaner
+
+# =============================================================================
+# Mocks e Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def mock_client():
+    """Mock do cliente Telethon."""
+    client = mock.AsyncMock()
+    # iter_dialogs retorna um iterador, não é uma corrotina em si (no uso do loop)
+    # mas o Telethon define como async def ou def que retorna RequestIter.
+    # No código: async for d in client.iter_dialogs():
+    # Se iter_dialogs for async def, ele retorna coroutine que DEVE ser awaited?
+    # NÃO: async for x in func() -> func() deve retornar um async iterator.
+    # Se func é async def, func() retorna coroutine. async for NÃO aceita coroutine diretamente.
+    # O client.iter_dialogs do Telethon retorna um objeto RequestIter (síncrono na chamada).
+    client.iter_dialogs = mock.Mock()
+
+    # Configurar delete_dialog como AsyncMock também
+    client.delete_dialog = mock.AsyncMock()
+    return client
+
+
+@pytest.fixture
+def mock_channel():
+    """Mock de um Channel/Megagroup."""
+    channel = mock.Mock(spec=Channel)
+    channel.id = 100
+    channel.name = "Canal Teste"
+    # Adicionar atributo entity para simular retorno de iter_dialogs
+    dialog = mock.Mock()
+    dialog.entity = channel
+    dialog.name = "Canal Teste"
+    return dialog
+
+
+@pytest.fixture
+def mock_chat():
+    """Mock de um Chat (grupo legado)."""
+    chat = mock.Mock(spec=Chat)
+    chat.id = 200
+    chat.name = "Grupo Legado"
+    dialog = mock.Mock()
+    dialog.entity = chat
+    dialog.name = "Grupo Legado"
+    return dialog
+
+
+@pytest.fixture
+def mock_user():
+    """Mock de um User (DM)."""
+    user = mock.Mock(spec=User)
+    user.id = 300
+    user.name = "Usuário Teste"
+    dialog = mock.Mock()
+    dialog.entity = user
+    dialog.name = "Usuário Teste"
+    return dialog
+
+
+class AsyncIterator:
+    """Helper para iterar async em testes."""
+
+    def __init__(self, items):
+        self.items = items
+
+    def __aiter__(self):
+        self.iter = iter(self.items)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self.iter)
+        except StopIteration:
+            raise StopAsyncIteration
+
+
+# =============================================================================
+# Testes de Funções Helper
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_delete_dialog_dry_run(mock_client):
+    """Verifica que delete_dialog respeita dry_run."""
+    await cleaner.delete_dialog(mock_client, "peer", dry_run=True)
+    mock_client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_dialog_execution(mock_client):
+    """Verifica chamada correta de DeleteHistoryRequest."""
+    await cleaner.delete_dialog(mock_client, "peer", dry_run=False)
+
+    args, _ = mock_client.call_args
+    request = args[0]
+    assert isinstance(request, DeleteHistoryRequest)
+    assert request.peer == "peer"
+    assert request.revoke is True
+
+
+@pytest.mark.asyncio
+async def test_leave_channel_dry_run(mock_client):
+    """Verifica que leave_channel respeita dry_run."""
+    channel = mock.Mock(spec=Channel)
+    await cleaner.leave_channel(mock_client, channel, dry_run=True)
+    mock_client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_leave_channel_execution(mock_client):
+    """Verifica chamada correta de LeaveChannelRequest."""
+    channel = mock.Mock(spec=Channel)
+    await cleaner.leave_channel(mock_client, channel, dry_run=False)
+
+    args, _ = mock_client.call_args
+    request = args[0]
+    assert isinstance(request, LeaveChannelRequest)
+    assert request.channel == channel
+
+
+@pytest.mark.asyncio
+async def test_leave_legacy_chat_dry_run(mock_client):
+    """Verifica que leave_legacy_chat respeita dry_run."""
+    chat = mock.Mock(spec=Chat)
+    await cleaner.leave_legacy_chat(mock_client, chat, dry_run=True)
+    mock_client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_leave_legacy_chat_execution(mock_client):
+    """Verifica chamada correta de DeleteChatUserRequest."""
+    chat = mock.Mock(spec=Chat)
+    chat.id = 123
+    await cleaner.leave_legacy_chat(mock_client, chat, dry_run=False)
+
+    args, _ = mock_client.call_args
+    request = args[0]
+    assert isinstance(request, DeleteChatUserRequest)
+    assert request.chat_id == 123
+
+
+# =============================================================================
+# Testes de clean_all_dialogs (Lógica Principal)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_clean_all_dialogs_dry_run_safety(
+    mock_client, mock_channel, mock_chat, mock_user
+):
+    """Garante que NADA é chamado no client em dry_run."""
+    mock_client.iter_dialogs.return_value = AsyncIterator(
+        [mock_channel, mock_chat, mock_user]
+    )
+
+    count = await cleaner.clean_all_dialogs(mock_client, dry_run=True)
+
+    assert count == 3
+    # Nenhuma chamada de escrita deve ter ocorrido
+    mock_client.assert_not_called()
+    mock_client.delete_dialog.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_clean_all_dialogs_limit(mock_client, mock_channel, mock_chat):
+    """Verifica se o limite interrompe o processamento."""
+    mock_client.iter_dialogs.return_value = AsyncIterator(
+        [mock_channel, mock_chat] * 10
+    )  # Muitos itens
+
+    count = await cleaner.clean_all_dialogs(mock_client, dry_run=True, limit=5)
+
+    assert count == 5
+
+
+@pytest.mark.asyncio
+async def test_clean_all_dialogs_channel(mock_client, mock_channel):
+    """Testa saída de canal."""
+    mock_client.iter_dialogs.return_value = AsyncIterator([mock_channel])
+
+    await cleaner.clean_all_dialogs(mock_client, dry_run=False)
+
+    args, _ = mock_client.call_args
+    assert isinstance(args[0], LeaveChannelRequest)
+
+
+@pytest.mark.asyncio
+async def test_clean_all_dialogs_user(mock_client, mock_user):
+    """Testa deleção de conversa com usuário (DM)."""
+    mock_client.iter_dialogs.return_value = AsyncIterator([mock_user])
+
+    await cleaner.clean_all_dialogs(mock_client, dry_run=False)
+
+    args, _ = mock_client.call_args
+    assert isinstance(args[0], DeleteHistoryRequest)
+
+
+@pytest.mark.asyncio
+async def test_clean_all_dialogs_chat_fallback(mock_client, mock_chat):
+    """Testa fallback para delete_dialog quando DeleteChatUserRequest falha."""
+    mock_client.iter_dialogs.return_value = AsyncIterator([mock_chat])
+
+    # Configurar side_effect para lançar RPCError na primeira chamada
+    # e sucesso na segunda (delete_dialog)
+    async def side_effect(request):
+        if isinstance(request, DeleteChatUserRequest):
+            raise RPCError(None, "Start param required", 400)
+        return
+
+    mock_client.side_effect = side_effect
+
+    await cleaner.clean_all_dialogs(mock_client, dry_run=False)
+
+    # Verifica se chamou o fallback
+    mock_client.delete_dialog.assert_awaited_once_with(mock_chat.entity)
+
+
+@pytest.mark.asyncio
+async def test_clean_all_dialogs_flood_wait_retry(mock_client, mock_user):
+    """Testa retry automático em caso de FloodWaitError."""
+    mock_client.iter_dialogs.return_value = AsyncIterator([mock_user])
+
+    # Criar erro FloodWait simulado com assinatura correta do Telethon: (request, capture)
+    # capture é usado para popular a propriedade .seconds
+    flood_error = FloodWaitError(request=None, capture=1)
+
+    # Simular FloodWait na primeira tentativa (em delete_dialog), sucesso na segunda
+    mock_client.side_effect = [flood_error, None]
+
+    # Patch no asyncio.sleep usado internamente pelo cleaner (tanto em safe_sleep quanto no handler de erro)
+    with mock.patch(
+        "clean_telegram.cleaner.asyncio.sleep", new_callable=mock.AsyncMock
+    ) as mock_sleep:
+        await cleaner.clean_all_dialogs(mock_client, dry_run=False)
+        assert (
+            mock_sleep.call_count >= 1
+        )  # Garante que sleeper foi chamado (no mínimo no retry)
+
+    # Deve ter chamado duas vezes (1 falha + 1 sucesso)
+    assert mock_client.call_count == 2
+</file>
+
+<file path="tests/test_cli_auth.py">
+"""Testes de autenticação do CLI (modo usuário e modo bot)."""
+
+from unittest import mock
+
+import pytest
+from telethon.errors import RPCError
+
+from clean_telegram import cli
+
+
+def get_mock_auth_config(
+    overrides: dict[str, object] | None = None,
+) -> cli.AuthConfig:
+    """Factory de AuthConfig com defaults seguros."""
+    data: dict[str, object] = {
+        "mode": "user",
+        "session_name": "session",
+        "bot_token": None,
+    }
+    if overrides:
+        data.update(overrides)
+    return cli.AuthConfig(**data)
+
+
+def get_mock_rpc_error(message: str = "CHAT_ADMIN_REQUIRED", code: int = 400) -> RPCError:
+    """Factory de RPCError para cenários de erro Telegram."""
+    return RPCError(None, message, code)
+
+
+class TestResolveAuthConfig:
+    def test_should_use_user_mode_by_default(self, monkeypatch):
+        monkeypatch.delenv("BOT_TOKEN", raising=False)
+        monkeypatch.delenv("SESSION_NAME", raising=False)
+        monkeypatch.delenv("BOT_SESSION_NAME", raising=False)
+
+        auth_config = cli.resolve_auth_config()
+
+        assert auth_config.mode == "user"
+        assert auth_config.session_name == "session"
+        assert auth_config.bot_token is None
+
+    def test_should_prioritize_bot_mode_when_bot_token_exists(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "123456:abc-token")
+        monkeypatch.setenv("BOT_SESSION_NAME", "my_bot_session")
+        monkeypatch.setenv("SESSION_NAME", "user_session_should_be_ignored")
+
+        auth_config = cli.resolve_auth_config()
+
+        assert auth_config.mode == "bot"
+        assert auth_config.session_name == "my_bot_session"
+        assert auth_config.bot_token == "123456:abc-token"
+
+    def test_should_use_default_bot_session_name_when_not_provided(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "999:bot-token")
+        monkeypatch.delenv("BOT_SESSION_NAME", raising=False)
+
+        auth_config = cli.resolve_auth_config()
+
+        assert auth_config.mode == "bot"
+        assert auth_config.session_name == "bot_session"
+
+
+class TestCreateClient:
+    def test_should_create_client_with_bot_session_when_bot_token_exists(self, monkeypatch):
+        monkeypatch.setenv("API_ID", "12345")
+        monkeypatch.setenv("API_HASH", "hash123")
+        monkeypatch.setenv("BOT_TOKEN", "999:bot-token")
+        monkeypatch.setenv("BOT_SESSION_NAME", "bot_session_custom")
+
+        telegram_client_ctor = mock.Mock(return_value=mock.sentinel.client)
+        monkeypatch.setattr(cli, "TelegramClient", telegram_client_ctor)
+
+        client, auth_config = cli.create_client()
+
+        assert client is mock.sentinel.client
+        assert auth_config.mode == "bot"
+        assert auth_config.session_name == "bot_session_custom"
+        telegram_client_ctor.assert_called_once_with(
+            "bot_session_custom", 12345, "hash123"
+        )
+
+    def test_should_create_client_with_user_session_without_bot_token(self, monkeypatch):
+        monkeypatch.setenv("API_ID", "67890")
+        monkeypatch.setenv("API_HASH", "hash456")
+        monkeypatch.setenv("SESSION_NAME", "legacy_user_session")
+        monkeypatch.delenv("BOT_TOKEN", raising=False)
+
+        telegram_client_ctor = mock.Mock(return_value=mock.sentinel.user_client)
+        monkeypatch.setattr(cli, "TelegramClient", telegram_client_ctor)
+
+        client, auth_config = cli.create_client()
+
+        assert client is mock.sentinel.user_client
+        assert auth_config.mode == "user"
+        assert auth_config.session_name == "legacy_user_session"
+        telegram_client_ctor.assert_called_once_with(
+            "legacy_user_session", 67890, "hash456"
+        )
+
+
+class TestStartClient:
+    @pytest.mark.asyncio
+    async def test_should_start_with_bot_token_in_bot_mode(self):
+        client = mock.AsyncMock()
+        auth_config = get_mock_auth_config(
+            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
+        )
+
+        await cli.start_client(client, auth_config)
+
+        client.start.assert_awaited_once_with(bot_token="123:token")
+
+    @pytest.mark.asyncio
+    async def test_should_start_without_bot_token_in_user_mode(self):
+        client = mock.AsyncMock()
+        auth_config = get_mock_auth_config()
+
+        await cli.start_client(client, auth_config)
+
+        client.start.assert_awaited_once_with()
+
+
+class TestWarnBotPermissions:
+    def test_should_warn_for_clean_mode_in_bot_auth(self, caplog):
+        auth_config = get_mock_auth_config(
+            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
+        )
+
+        with caplog.at_level("WARNING"):
+            cli.warn_bot_permissions(
+                auth_config=auth_config,
+                is_clean_mode=True,
+                is_backup_mode=False,
+            )
+
+        assert "Modo bot ativo" in caplog.text
+
+    def test_should_warn_for_backup_mode_in_bot_auth(self, caplog):
+        auth_config = get_mock_auth_config(
+            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
+        )
+
+        with caplog.at_level("WARNING"):
+            cli.warn_bot_permissions(
+                auth_config=auth_config,
+                is_clean_mode=False,
+                is_backup_mode=True,
+            )
+
+        assert "Modo bot ativo" in caplog.text
+
+    def test_should_not_warn_for_reports_in_bot_auth(self, caplog):
+        auth_config = get_mock_auth_config(
+            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
+        )
+
+        with caplog.at_level("WARNING"):
+            cli.warn_bot_permissions(
+                auth_config=auth_config,
+                is_clean_mode=False,
+                is_backup_mode=False,
+            )
+
+        assert "Modo bot ativo" not in caplog.text
+
+    def test_should_not_warn_in_user_mode(self, caplog):
+        auth_config = get_mock_auth_config()
+
+        with caplog.at_level("WARNING"):
+            cli.warn_bot_permissions(
+                auth_config=auth_config,
+                is_clean_mode=True,
+                is_backup_mode=True,
+            )
+
+        assert "Modo bot ativo" not in caplog.text
+
+
+class TestFormatRpcError:
+    def test_should_return_bot_friendly_message_in_bot_mode(self):
+        error = get_mock_rpc_error()
+        auth_config = get_mock_auth_config(
+            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
+        )
+
+        message = cli.format_rpc_error(error, auth_config)
+
+        assert "Falha em modo bot" in message
+        assert "permissões necessárias" in message
+        assert "CHAT_ADMIN_REQUIRED" in message
+
+    def test_should_return_generic_message_in_user_mode(self):
+        error = get_mock_rpc_error("FLOOD_WAIT", 420)
+        auth_config = get_mock_auth_config()
+
+        message = cli.format_rpc_error(error, auth_config)
+
+        assert "Erro da API do Telegram" in message
+        assert "FLOOD_WAIT" in message
 </file>
 
 <file path="tests/test_performance.py">
@@ -527,40 +1557,6 @@ class TestNdjsonFormat:
         assert header["chat_title"] == mock_chat_entity.title
 </file>
 
-<file path="src/clean_telegram/__init__.py">
-"""CleanTelegram: script para limpar conta Telegram via Telethon.
-
-Este pacote fornece funcionalidades para:
-- Apagar históricos de conversa
-- Sair de grupos/canais
-- Gerar relatórios de grupos, canais e contatos
-"""
-
-__version__ = "1.1.0"
-</file>
-
-<file path="src/clean_telegram/__main__.py">
-"""Entry point para execução como módulo Python.
-
-Usage:
-    python -m clean_telegram --help
-    python -m clean_telegram --report all
-"""
-
-import asyncio
-
-from .cli import main as _main_async
-
-
-def main() -> None:
-    """Entry point síncrono para entry points de console."""
-    asyncio.run(_main_async())
-
-
-if __name__ == "__main__":
-    main()
-</file>
-
 <file path="src/clean_telegram/cleaner.py">
 """Módulo de limpeza do CleanTelegram.
 
@@ -722,413 +1718,6 @@ async def clean_all_dialogs(
     return processed
 </file>
 
-<file path="src/clean_telegram/reports.py">
-"""Módulo de geração de relatórios para CleanTelegram.
-
-Gera relatórios de grupos, canais e contatos em diversos formatos.
-"""
-
-import csv
-import json
-from datetime import datetime
-from pathlib import Path
-from typing import Any
-
-from telethon import TelegramClient
-from telethon.tl.types import Channel, Chat, User
-
-
-def _get_timestamp() -> str:
-    """Retorna timestamp atual formatado para nomes de arquivo."""
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
-
-
-def _safe_getattr(obj: Any, attr: str, default: Any = None) -> Any:
-    """getattr seguro que retorna default se AttributeError ocorrer."""
-    try:
-        return getattr(obj, attr, default)
-    except (AttributeError, TypeError):
-        return default
-
-
-def _is_channel(entity: Any) -> bool:
-    """Verifica se a entidade é um Channel (tem atributo megagroup)."""
-    return hasattr(entity, "megagroup") or hasattr(entity, "broadcast")
-
-
-def _is_chat(entity: Any) -> bool:
-    """Verifica se a entidade é um Chat (grupo legado, tem participants_count mas não megagroup)."""
-    return hasattr(entity, "participants_count") and not hasattr(entity, "megagroup")
-
-
-def _is_user(entity: Any) -> bool:
-    """Verifica se a entidade é um User (tem first_name ou bot).
-
-    Nota: User pode ter username mas não megagroup/broadcast (Channel)
-    nem apenas participants_count (Chat legado).
-    """
-    return (
-        hasattr(entity, "first_name")
-        or hasattr(entity, "bot")
-        or (hasattr(entity, "username") and not hasattr(entity, "megagroup"))
-    ) and not _is_channel(entity) and not _is_chat(entity)
-
-
-async def generate_groups_channels_report(
-    client: TelegramClient,
-    output_path: str | None = None,
-    output_format: str = "csv",
-) -> str:
-    """Gera relatório de grupos e canais.
-
-    Args:
-        client: Cliente Telethon conectado.
-        output_path: Caminho do arquivo de saída. Se None, usa padrão com timestamp.
-        output_format: Formato do relatório (csv, json ou txt).
-
-    Returns:
-        Caminho do arquivo gerado.
-    """
-    # Coletar dados
-    items = []
-
-    async for dialog in client.iter_dialogs():
-        entity = dialog.entity
-
-        if not (_is_channel(entity) or _is_chat(entity)):
-            continue
-
-        item: dict[str, Any] = {
-            "title": dialog.name or "(sem nome)",
-            "id": entity.id,
-        }
-
-        if _is_channel(entity):
-            item["type"] = "Channel"
-            item["username"] = _safe_getattr(entity, "username", "")
-            item["participants_count"] = _safe_getattr(entity, "participants_count", 0)
-            item["is_megagroup"] = _safe_getattr(entity, "megagroup", False)
-            item["is_broadcast"] = _safe_getattr(entity, "broadcast", False)
-            item["creator"] = _safe_getattr(entity, "creator", False)
-            item["admin_rights"] = _safe_getattr(entity, "admin_rights") is not None
-            item["date"] = (
-                _safe_getattr(entity, "date").isoformat()
-                if _safe_getattr(entity, "date")
-                else ""
-            )
-        else:  # Chat (grupo legado)
-            item["type"] = "Chat"
-            item["username"] = ""
-            item["participants_count"] = _safe_getattr(entity, "participants_count", 0)
-            item["is_megagroup"] = False
-            item["is_broadcast"] = False
-            item["creator"] = _safe_getattr(entity, "creator", False)
-            item["admin_rights"] = False
-            item["date"] = ""
-
-        items.append(item)
-
-    # Validar formato antes de processar
-    valid_formats = {"csv", "json", "txt"}
-    if output_format not in valid_formats:
-        raise ValueError(f"Formato não suportado: {output_format}. Use um de: {', '.join(sorted(valid_formats))}")
-
-    # Determinar caminho de saída
-    if output_path is None:
-        timestamp = _get_timestamp()
-        suffix = output_format  # O formato já é a extensão
-        output_path = f"relatorios/groups_channels_{timestamp}.{suffix}"
-
-    output_file = Path(output_path)
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Gerar relatório no formato solicitado
-    if output_format == "csv":
-        _write_csv_report(items, output_file)
-    elif output_format == "json":
-        _write_json_report(items, output_file, report_type="groups_channels")
-    elif output_format == "txt":
-        _write_txt_report(items, output_file, report_type="groups_channels")
-
-    return str(output_file)
-
-
-async def generate_contacts_report(
-    client: TelegramClient,
-    output_path: str | None = None,
-    output_format: str = "csv",
-) -> str:
-    """Gera relatório de contatos e usuários.
-
-    Args:
-        client: Cliente Telethon conectado.
-        output_path: Caminho do arquivo de saída. Se None, usa padrão com timestamp.
-        output_format: Formato do relatório (csv, json ou txt).
-
-    Returns:
-        Caminho do arquivo gerado.
-    """
-    # Coletar dados
-    items = []
-
-    async for dialog in client.iter_dialogs():
-        entity = dialog.entity
-
-        if not _is_user(entity):
-            continue
-
-        # Formatar nome
-        first_name = _safe_getattr(entity, "first_name", "")
-        last_name = _safe_getattr(entity, "last_name", "")
-        full_name = f"{first_name} {last_name}".strip() or first_name or "(sem nome)"
-
-        # Status
-        status = _safe_getattr(entity, "status", None)
-        status_str = ""
-        if status:
-            if hasattr(status, "was_online"):
-                status_str = f"Último acesso: {_format_status(status)}"
-            elif hasattr(status, "expires"):
-                status_str = "Online"
-            else:
-                status_str = str(type(status).__name__)
-
-        item: dict[str, Any] = {
-            "name": full_name,
-            "id": entity.id,
-            "username": f"@{_safe_getattr(entity, 'username', '')}" if _safe_getattr(entity, "username") else "",
-            "is_bot": _safe_getattr(entity, "bot", False),
-            "is_verified": _safe_getattr(entity, "verified", False),
-            "is_premium": _safe_getattr(entity, "premium", False),
-            "status": status_str,
-            "phone": _safe_getattr(entity, "phone", ""),
-        }
-
-        items.append(item)
-
-    # Validar formato antes de processar
-    valid_formats = {"csv", "json", "txt"}
-    if output_format not in valid_formats:
-        raise ValueError(f"Formato não suportado: {output_format}. Use um de: {', '.join(sorted(valid_formats))}")
-
-    # Determinar caminho de saída
-    if output_path is None:
-        timestamp = _get_timestamp()
-        suffix = output_format  # O formato já é a extensão
-        output_path = f"relatorios/contacts_{timestamp}.{suffix}"
-
-    output_file = Path(output_path)
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Gerar relatório no formato solicitado
-    if output_format == "csv":
-        _write_csv_report(items, output_file, report_type="contacts")
-    elif output_format == "json":
-        _write_json_report(items, output_file, report_type="contacts")
-    elif output_format == "txt":
-        _write_txt_report(items, output_file, report_type="contacts")
-    else:
-        # Nunca deve chegar aqui devido à validação acima
-        raise ValueError(f"Formato não suportado: {output_format}")
-
-    return str(output_file)
-
-
-def _format_status(status) -> str:
-    """Formata status de usuário para exibição."""
-    if hasattr(status, "was_online") and status.was_online:
-        return status.was_online.strftime("%d/%m/%Y %H:%M")
-    return "Desconhecido"
-
-
-def _write_csv_report(items: list[dict[str, Any]], output_file: Path, report_type: str = "groups_channels") -> None:
-    """Escreve relatório em formato CSV."""
-    if not items:
-        # Criar arquivo vazio com cabeçalho
-        with open(output_file, "w", newline="", encoding="utf-8") as f:
-            if report_type == "groups_channels":
-                writer = csv.DictWriter(
-                    f,
-                    fieldnames=[
-                        "Tipo",
-                        "Nome",
-                        "ID",
-                        "Username",
-                        "Participantes",
-                        "Megagrupo",
-                        "Broadcast",
-                        "Criador",
-                        "Admin",
-                        "Data Criação",
-                    ],
-                )
-            else:
-                writer = csv.DictWriter(
-                    f,
-                    fieldnames=[
-                        "Nome",
-                        "ID",
-                        "Username",
-                        "Bot",
-                        "Verificado",
-                        "Premium",
-                        "Status",
-                        "Telefone",
-                    ],
-                )
-            writer.writeheader()
-        return
-
-    with open(output_file, "w", newline="", encoding="utf-8") as f:
-        if report_type == "groups_channels":
-            fieldnames = [
-                "Tipo",
-                "Nome",
-                "ID",
-                "Username",
-                "Participantes",
-                "Megagrupo",
-                "Broadcast",
-                "Criador",
-                "Admin",
-                "Data Criação",
-            ]
-            rows = [
-                {
-                    "Tipo": item["type"],
-                    "Nome": item["title"],
-                    "ID": item["id"],
-                    "Username": item["username"],
-                    "Participantes": item["participants_count"],
-                    "Megagrupo": "Sim" if item["is_megagroup"] else "Não",
-                    "Broadcast": "Sim" if item["is_broadcast"] else "Não",
-                    "Criador": "Sim" if item["creator"] else "Não",
-                    "Admin": "Sim" if item["admin_rights"] else "Não",
-                    "Data Criação": item["date"],
-                }
-                for item in items
-            ]
-        else:  # contacts
-            fieldnames = [
-                "Nome",
-                "ID",
-                "Username",
-                "Bot",
-                "Verificado",
-                "Premium",
-                "Status",
-                "Telefone",
-            ]
-            rows = [
-                {
-                    "Nome": item["name"],
-                    "ID": item["id"],
-                    "Username": item["username"],
-                    "Bot": "Sim" if item["is_bot"] else "Não",
-                    "Verificado": "Sim" if item["is_verified"] else "Não",
-                    "Premium": "Sim" if item["is_premium"] else "Não",
-                    "Status": item["status"],
-                    "Telefone": item["phone"],
-                }
-                for item in items
-            ]
-
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-
-
-def _write_json_report(items: list[dict[str, Any]], output_file: Path, report_type: str) -> None:
-    """Escreve relatório em formato JSON."""
-    report = {
-        "generated_at": datetime.now().isoformat(),
-        "report_type": report_type,
-        "total": len(items),
-        "items": items,
-    }
-
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(report, f, ensure_ascii=False, indent=2)
-
-
-def _write_txt_report(items: list[dict[str, Any]], output_file: Path, report_type: str) -> None:
-    """Escreve relatório em formato TXT formatado."""
-    lines: list[str] = []
-
-    if report_type == "groups_channels":
-        title = "RELATÓRIO DE GRUPOS E CANAIS"
-    else:
-        title = "RELATÓRIO DE CONTATOS"
-
-    lines.append("=" * 50)
-    lines.append(title)
-    lines.append(f"Gerado em: {datetime.now().strftime('%d/%m/%Y às %H:%M')}")
-    lines.append(f"Total: {len(items)} item(ns)")
-    lines.append("=" * 50)
-    lines.append("")
-
-    if not items:
-        lines.append("(Nenhum item encontrado)")
-    else:
-        for i, item in enumerate(items, 1):
-            if report_type == "groups_channels":
-                lines.append(f"[{i}] {item['type']} - {item['title']}")
-                if item["username"]:
-                    lines.append(f"    Username: {item['username']}")
-                lines.append(f"    ID: {item['id']}")
-                lines.append(f"    Participantes: {item['participants_count']}")
-                if item["type"] == "Channel":
-                    lines.append(f"    Megagrupo: {'Sim' if item['is_megagroup'] else 'Não'}")
-                    lines.append(f"    Broadcast: {'Sim' if item['is_broadcast'] else 'Não'}")
-                lines.append(f"    Criador: {'Sim' if item['creator'] else 'Não'}")
-                lines.append(f"    Admin: {'Sim' if item['admin_rights'] else 'Não'}")
-                if item["date"]:
-                    lines.append(f"    Data Criação: {item['date']}")
-            else:  # contacts
-                lines.append(f"[{i}] {item['name']}")
-                if item["username"]:
-                    lines.append(f"    Username: {item['username']}")
-                lines.append(f"    ID: {item['id']}")
-                lines.append(f"    Bot: {'Sim' if item['is_bot'] else 'Não'}")
-                lines.append(f"    Verificado: {'Sim' if item['is_verified'] else 'Não'}")
-                lines.append(f"    Premium: {'Sim' if item['is_premium'] else 'Não'}")
-                if item["status"]:
-                    lines.append(f"    Status: {item['status']}")
-                if item["phone"]:
-                    lines.append(f"    Telefone: {item['phone']}")
-
-            lines.append("")
-
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-
-
-async def generate_all_reports(
-    client: TelegramClient,
-    output_format: str = "csv",
-) -> dict[str, str]:
-    """Gera todos os relatórios disponíveis.
-
-    Args:
-        client: Cliente Telethon conectado.
-        output_format: Formato dos relatórios (csv, json ou txt).
-
-    Returns:
-        Dicionário com tipo de relatório e caminho do arquivo gerado.
-    """
-    results = {}
-
-    # Gerar relatório de grupos e canais
-    groups_path = await generate_groups_channels_report(client, output_format=output_format)
-    results["groups_channels"] = groups_path
-
-    # Gerar relatório de contatos
-    contacts_path = await generate_contacts_report(client, output_format=output_format)
-    results["contacts"] = contacts_path
-
-    return results
-</file>
-
 <file path="src/clean_telegram/ui.py">
 """Módulo de UI rica para o CleanTelegram.
 
@@ -1240,30 +1829,6 @@ def print_info(message: str) -> None:
 def print_tip(message: str) -> None:
     """Exibe dica formatada."""
     console.print(f"[dim]💡 {message}[/]")
-</file>
-
-<file path="tests/__init__.py">
-"""Testes para CleanTelegram."""
-</file>
-
-<file path="tests/conftest.py">
-"""Configuração de testes para CleanTelegram."""
-
-import sys
-from pathlib import Path
-
-# Adicionar src/ ao path ANTES de qualquer outra coisa para importar o módulo correto
-src_path = Path(__file__).parent.parent / "src"
-if src_path.exists() and src_path.is_dir():
-    sys.path.insert(0, str(src_path))
-else:
-    raise RuntimeError(f"Diretório src/ não encontrado em {src_path}. Verifique a estrutura do projeto.")
-
-# Remover o diretório raiz do path para evitar conflito
-root_path = Path(__file__).parent.parent
-root_path_str = str(root_path)
-# Remover TODAS as ocorrências, não apenas a primeira
-sys.path = [p for p in sys.path if p != root_path_str]
 </file>
 
 <file path="tests/test_backup_cloud.py">
@@ -1912,208 +2477,6 @@ class TestBackupCloudErrorHandling:
         captions = [f["caption"] for f in sent_files]
         # Verificar que algum caption contém o título especial
         assert any("Grupo" in c for c in captions)
-</file>
-
-<file path="tests/test_cli_auth.py">
-"""Testes de autenticação do CLI (modo usuário e modo bot)."""
-
-from unittest import mock
-
-import pytest
-from telethon.errors import RPCError
-
-from clean_telegram import cli
-
-
-def get_mock_auth_config(
-    overrides: dict[str, object] | None = None,
-) -> cli.AuthConfig:
-    """Factory de AuthConfig com defaults seguros."""
-    data: dict[str, object] = {
-        "mode": "user",
-        "session_name": "session",
-        "bot_token": None,
-    }
-    if overrides:
-        data.update(overrides)
-    return cli.AuthConfig(**data)
-
-
-def get_mock_rpc_error(message: str = "CHAT_ADMIN_REQUIRED", code: int = 400) -> RPCError:
-    """Factory de RPCError para cenários de erro Telegram."""
-    return RPCError(None, message, code)
-
-
-class TestResolveAuthConfig:
-    def test_should_use_user_mode_by_default(self, monkeypatch):
-        monkeypatch.delenv("BOT_TOKEN", raising=False)
-        monkeypatch.delenv("SESSION_NAME", raising=False)
-        monkeypatch.delenv("BOT_SESSION_NAME", raising=False)
-
-        auth_config = cli.resolve_auth_config()
-
-        assert auth_config.mode == "user"
-        assert auth_config.session_name == "session"
-        assert auth_config.bot_token is None
-
-    def test_should_prioritize_bot_mode_when_bot_token_exists(self, monkeypatch):
-        monkeypatch.setenv("BOT_TOKEN", "123456:abc-token")
-        monkeypatch.setenv("BOT_SESSION_NAME", "my_bot_session")
-        monkeypatch.setenv("SESSION_NAME", "user_session_should_be_ignored")
-
-        auth_config = cli.resolve_auth_config()
-
-        assert auth_config.mode == "bot"
-        assert auth_config.session_name == "my_bot_session"
-        assert auth_config.bot_token == "123456:abc-token"
-
-    def test_should_use_default_bot_session_name_when_not_provided(self, monkeypatch):
-        monkeypatch.setenv("BOT_TOKEN", "999:bot-token")
-        monkeypatch.delenv("BOT_SESSION_NAME", raising=False)
-
-        auth_config = cli.resolve_auth_config()
-
-        assert auth_config.mode == "bot"
-        assert auth_config.session_name == "bot_session"
-
-
-class TestCreateClient:
-    def test_should_create_client_with_bot_session_when_bot_token_exists(self, monkeypatch):
-        monkeypatch.setenv("API_ID", "12345")
-        monkeypatch.setenv("API_HASH", "hash123")
-        monkeypatch.setenv("BOT_TOKEN", "999:bot-token")
-        monkeypatch.setenv("BOT_SESSION_NAME", "bot_session_custom")
-
-        telegram_client_ctor = mock.Mock(return_value=mock.sentinel.client)
-        monkeypatch.setattr(cli, "TelegramClient", telegram_client_ctor)
-
-        client, auth_config = cli.create_client()
-
-        assert client is mock.sentinel.client
-        assert auth_config.mode == "bot"
-        assert auth_config.session_name == "bot_session_custom"
-        telegram_client_ctor.assert_called_once_with(
-            "bot_session_custom", 12345, "hash123"
-        )
-
-    def test_should_create_client_with_user_session_without_bot_token(self, monkeypatch):
-        monkeypatch.setenv("API_ID", "67890")
-        monkeypatch.setenv("API_HASH", "hash456")
-        monkeypatch.setenv("SESSION_NAME", "legacy_user_session")
-        monkeypatch.delenv("BOT_TOKEN", raising=False)
-
-        telegram_client_ctor = mock.Mock(return_value=mock.sentinel.user_client)
-        monkeypatch.setattr(cli, "TelegramClient", telegram_client_ctor)
-
-        client, auth_config = cli.create_client()
-
-        assert client is mock.sentinel.user_client
-        assert auth_config.mode == "user"
-        assert auth_config.session_name == "legacy_user_session"
-        telegram_client_ctor.assert_called_once_with(
-            "legacy_user_session", 67890, "hash456"
-        )
-
-
-class TestStartClient:
-    @pytest.mark.asyncio
-    async def test_should_start_with_bot_token_in_bot_mode(self):
-        client = mock.AsyncMock()
-        auth_config = get_mock_auth_config(
-            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
-        )
-
-        await cli.start_client(client, auth_config)
-
-        client.start.assert_awaited_once_with(bot_token="123:token")
-
-    @pytest.mark.asyncio
-    async def test_should_start_without_bot_token_in_user_mode(self):
-        client = mock.AsyncMock()
-        auth_config = get_mock_auth_config()
-
-        await cli.start_client(client, auth_config)
-
-        client.start.assert_awaited_once_with()
-
-
-class TestWarnBotPermissions:
-    def test_should_warn_for_clean_mode_in_bot_auth(self, caplog):
-        auth_config = get_mock_auth_config(
-            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
-        )
-
-        with caplog.at_level("WARNING"):
-            cli.warn_bot_permissions(
-                auth_config=auth_config,
-                is_clean_mode=True,
-                is_backup_mode=False,
-            )
-
-        assert "Modo bot ativo" in caplog.text
-
-    def test_should_warn_for_backup_mode_in_bot_auth(self, caplog):
-        auth_config = get_mock_auth_config(
-            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
-        )
-
-        with caplog.at_level("WARNING"):
-            cli.warn_bot_permissions(
-                auth_config=auth_config,
-                is_clean_mode=False,
-                is_backup_mode=True,
-            )
-
-        assert "Modo bot ativo" in caplog.text
-
-    def test_should_not_warn_for_reports_in_bot_auth(self, caplog):
-        auth_config = get_mock_auth_config(
-            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
-        )
-
-        with caplog.at_level("WARNING"):
-            cli.warn_bot_permissions(
-                auth_config=auth_config,
-                is_clean_mode=False,
-                is_backup_mode=False,
-            )
-
-        assert "Modo bot ativo" not in caplog.text
-
-    def test_should_not_warn_in_user_mode(self, caplog):
-        auth_config = get_mock_auth_config()
-
-        with caplog.at_level("WARNING"):
-            cli.warn_bot_permissions(
-                auth_config=auth_config,
-                is_clean_mode=True,
-                is_backup_mode=True,
-            )
-
-        assert "Modo bot ativo" not in caplog.text
-
-
-class TestFormatRpcError:
-    def test_should_return_bot_friendly_message_in_bot_mode(self):
-        error = get_mock_rpc_error()
-        auth_config = get_mock_auth_config(
-            {"mode": "bot", "session_name": "bot_session", "bot_token": "123:token"}
-        )
-
-        message = cli.format_rpc_error(error, auth_config)
-
-        assert "Falha em modo bot" in message
-        assert "permissões necessárias" in message
-        assert "CHAT_ADMIN_REQUIRED" in message
-
-    def test_should_return_generic_message_in_user_mode(self):
-        error = get_mock_rpc_error("FLOOD_WAIT", 420)
-        auth_config = get_mock_auth_config()
-
-        message = cli.format_rpc_error(error, auth_config)
-
-        assert "Erro da API do Telegram" in message
-        assert "FLOOD_WAIT" in message
 </file>
 
 <file path="tests/test_interactive_backup.py">
@@ -2773,6 +3136,21 @@ async def test_generate_groups_channels_report_invalid_format(
             output_path=str(output_path),
             output_format="invalid",
         )
+</file>
+
+<file path=".env.example">
+# Telegram API credentials (https://my.telegram.org)
+API_ID=123456
+API_HASH=your_api_hash_here
+
+# Optional: user session file name (default: session)
+SESSION_NAME=session
+
+# Optional: bot mode (if set, bot auth is used automatically)
+BOT_TOKEN=
+
+# Optional: bot session file name (default: bot_session)
+BOT_SESSION_NAME=bot_session
 </file>
 
 <file path="run_clean_telegram.py">
@@ -4977,21 +5355,6 @@ async def interactive_backup(client: TelegramClient) -> None:
         logger.exception("Erro no backup interativo")
 </file>
 
-<file path=".env.example">
-# Telegram API credentials (https://my.telegram.org)
-API_ID=123456
-API_HASH=your_api_hash_here
-
-# Optional: user session file name (default: session)
-SESSION_NAME=session
-
-# Optional: bot mode (if set, bot auth is used automatically)
-BOT_TOKEN=
-
-# Optional: bot session file name (default: bot_session)
-BOT_SESSION_NAME=bot_session
-</file>
-
 <file path=".gitignore">
 # Ambiente virtual
 .venv/
@@ -5103,6 +5466,11 @@ optional = [
 [project.scripts]
 cleantelegram = "clean_telegram.cli:main_sync"
 clean-telegram = "clean_telegram.cli:main_sync"
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.0.0",
+]
 </file>
 
 <file path="requirements.txt">
@@ -5115,254 +5483,129 @@ rich>=13.0.0
 <file path="README.md">
 # CleanTelegram
 
-**Tags:** telegram, telethon, python, cleanup, automation, privacy, destructive
+**Tags:** telegram, telethon, python, automation, privacy, cleanup
 
-**Atenção:** este projeto automatiza ações destrutivas na sua conta Telegram (apagar conversas e sair de grupos/canais). Use **por sua conta e risco**. Recomendo testar primeiro com `--dry-run`.
+> [!WARNING]
+> **Atenção:** Este projeto automatiza ações **destrutivas** (apagar conversas, sair de grupos). Use com cautela e sempre teste com `--dry-run` primeiro.
 
-## O que faz
+## 🚀 O que faz
 
-- Apaga diálogos (conversas) com usuários/bots.
-- Sai de **grupos** e **canais**.
-- **Gera relatórios** de grupos, canais e contatos em CSV, JSON ou TXT.
-- **Backup completo** de grupos (mensagens + participantes).
-- **Exporta participantes** e mensagens de grupos específicos.
+O **CleanTelegram** é uma ferramenta de linha de comando (CLI) para gerenciar e limpar sua conta do Telegram de forma automatizada.
 
-> Observação: Telegram não tem um "bloquear grupo" de verdade (bloqueio é para **usuários**). Para grupos/canais, o equivalente prático é **sair**; e/ou **arquivar + silenciar**.
+- 🗑️ **Limpeza:** Apaga conversas (DMs) e sai de grupos/canais em massa.
+- 📦 **Backup:** Salva histórico completo de chats (mensagens + participantes + mídia).
+- 📊 **Relatórios:** Gera inventários de seus grupos, canais e contatos.
+- ☁️ **Cloud Upload:** Envia backups diretamente para seu "Saved Messages" no Telegram.
 
-## Requisitos
+## 📋 Requisitos
 
-- Python 3.10+
-- Credenciais do Telegram API: `API_ID` e `API_HASH`
-  - Pegue em: https://my.telegram.org
-- Opcional para modo bot: `BOT_TOKEN`
-  - Pegue com o BotFather no Telegram
+- **Python 3.10+**
+- Credenciais do Telegram (`API_ID` e `API_HASH`):
+  - Obtenha em [my.telegram.org](https://my.telegram.org).
+- (Opcional) `BOT_TOKEN` se for usar em modo Bot.
 
-## Instalação
+## 🛠️ Instalação
 
-### Com UV (recomendado)
+Clone o repositório e instale em modo editável (recomendado):
+
+### Com uv (Recomendado)
 
 ```bash
-# Instalar dependências
+# 1. Instalar dependências e o pacote
 uv sync
+uv pip install -e .
 
-# Criar arquivo .env
+# 2. Configurar variáveis de ambiente
 cp .env.example .env
+# Edite .env com suas credenciais
 ```
 
-### Com pip/venv
+### Com pip
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -e .
 cp .env.example .env
 ```
 
-Edite `.env` com `API_ID` e `API_HASH`.
+## ⚙️ Configuração
 
-## Autenticação (usuário x bot)
+O projeto suporta dois modos de operação, detectados automaticamente pelo `.env`:
 
-O projeto detecta automaticamente o modo de autenticação:
+1. **Modo Usuário** (Padrão): Requer login interativo (número + código). Acesso total à sua conta pessoal.
+   - Deixe `BOT_TOKEN` em branco no `.env`.
+2. **Modo Bot**: Usa `BOT_TOKEN`. Ações limitadas às permissões do bot nos chats.
+   - Preencha `BOT_TOKEN` no `.env`.
 
-- Se `BOT_TOKEN` estiver definido no `.env`, usa **modo bot**.
-- Se `BOT_TOKEN` não estiver definido, usa **modo usuário** (sessão tradicional do Telethon).
+## 🎮 Uso
 
-Variáveis relacionadas:
+Após instalar, o comando `cleantelegram` (ou `clean-telegram`) estará disponível.
 
-- `SESSION_NAME` (modo usuário, padrão: `session`)
-- `BOT_SESSION_NAME` (modo bot, padrão: `bot_session`)
+### 🌟 Modo Interativo (Recomendado)
 
-## Uso
-
-### Com UV
-
-```bash
-# Sincronizar dependências
-uv sync
-
-# Modo interativo
-uv run python -m clean_telegram --interactive
-
-# Modo bot (autodetectado por BOT_TOKEN no .env)
-uv run python -m clean_telegram --report groups
-
-# Limpeza (dry-run)
-uv run python -m clean_telegram --dry-run
-
-# Relatórios
-uv run python -m clean_telegram --report groups
-uv run python -m clean_telegram --report contacts
-uv run python -m clean_telegram --report all
-
-# Backup de grupo
-uv run python -m clean_telegram --backup-group -1001234567890
-
-# Exportar participantes
-uv run python -m clean_telegram --export-members @nome_do_grupo
-
-# Exportar mensagens
-uv run python -m clean_telegram --export-messages @nome_do_grupo
-
-# Help
-uv run python -m clean_telegram --help
-```
-
-### Sem UV (módulo Python)
-
-### Modo Interativo
-
-Para uma experiência mais amigável, use o modo interativo com menus visuais:
+A maneira mais fácil de usar. Navegue por menus visuais para backup, limpeza e relatórios.
 
 ```bash
-python -m clean_telegram --interactive
+cleantelegram --interactive
 # ou
-python -m clean_telegram -i
-# ou
-python run_clean_telegram.py -i
+cleantelegram -i
 ```
 
-O modo interativo oferece:
-- 📋 Menus visuais para selecionar ações
-- ⚠️ Confirmações guiadas para ações destrutivas
-- 📊 Seleção de tipo e formato de relatórios
-- 📈 Visualização de estatísticas da conta
+### 🖥️ Linha de Comando (CLI)
 
-### Limpeza de diálogos
-
-Dry-run (recomendado):
+#### 1. Backup e Exportação
 
 ```bash
-python run_clean_telegram.py --dry-run
-# ou
-python -m clean_telegram --dry-run
+# Backup completo (JSON)
+cleantelegram --backup-group -1001234567890
+
+# Backup com MÍDIA (fotos, vídeos)
+cleantelegram --backup-group -1001234567890 --download-media --media-types photo,video
+
+# Backup e upload para Nuvem (Saved Messages)
+cleantelegram --backup-group -1001234567890 --backup-to-cloud
 ```
 
-Executar de verdade:
+#### 2. Relatórios
+
+Gera arquivos CSV/JSON/TXT com lista de chats.
 
 ```bash
-python run_clean_telegram.py
-# ou
-python -m clean_telegram
+# Listar todos os grupos e canais
+cleantelegram --report groups
+
+# Listar contatos (tabela no terminal)
+cleantelegram --report contacts --report-format json
 ```
 
-### Geração de relatórios
-
-Gerar relatório de grupos e canais (CSV):
+#### 3. Limpeza (Cuidado!)
 
 ```bash
-python -m clean_telegram --report groups
+# Simulação (Dry-Run) - Segura, apenas lista o que seria feito
+cleantelegram --clean --dry-run
+
+# Executar limpeza real (apaga DMs, sai de canais)
+cleantelegram --clean
 ```
 
-Gerar relatório de contatos (JSON):
+> **Nota:** Por segurança, a limpeza real pode pedir confirmação extra ou ter limites de segurança.
+
+## 🧪 Desenvolvimento
+
+Para rodar os testes:
 
 ```bash
-python -m clean_telegram --report contacts --report-format json
+# Instalar dependências de dev
+uv sync --all-extras
+
+# Rodar testes
+uv run pytest
 ```
 
-Gerar todos os relatórios (TXT):
+## 📜 Licença
 
-```bash
-python -m clean_telegram --report all --report-format txt
-```
-
-Especificar caminho de saída:
-
-```bash
-python -m clean_telegram --report groups --report-output meu_relatorio.csv
-```
-
-### Backup e Exportação de Dados
-
-**Backup completo de um grupo:**
-
-```bash
-# Backup em JSON (padrão)
-uv run python -m clean_telegram --backup-group <chat_id>
-
-# Backup em CSV
-uv run python -m clean_telegram --backup-group <chat_id> --backup-format csv
-
-# Backup em ambos os formatos
-uv run python -m clean_telegram --backup-group <chat_id> --backup-format both
-```
-
-**Backup com MÍDIA:**
-
-```bash
-# Backup completo BAIXANDO ARQUIVOS DE MÍDIA
-uv run python -m clean_telegram --backup-group <chat_id> --download-media
-
-# Backup apenas de fotos e vídeos
-uv run python -m clean_telegram --backup-group <chat_id> --download-media --media-types photo,video
-
-# Backup com tipos específicos de mídia
-uv run python -m clean_telegram --backup-group <chat_id> --download-media --media-types photo,video,document
-```
-
-**Backup para Cloud Chat (Saved Messages):**
-
-```bash
-# Envia arquivos de backup para o Cloud Chat (Mensagens Salvas)
-uv run python -m clean_telegram --backup-group <chat_id> --backup-to-cloud
-
-# Backup com mídia + envio para cloud
-uv run python -m clean_telegram --backup-group <chat_id> --download-media --backup-to-cloud
-```
-
-> **☁️ O que é Cloud Chat?**
->
-> O Cloud Chat do Telegram (Saved Messages / Mensagens Salvas) funciona como armazenamento pessoal na nuvem:
-> - Armazenamento generoso (até 4GB para usuários Premium, 2GB para grátis)
-> - Acessível de qualquer dispositivo com Telegram
-> - Arquivos persistem mesmo se apagados localmente
-> - Facilidade de acesso via app do Telegram
-> - Organização com captions descritivos usando emojis
-
-**Exportar apenas participantes ou mensagens:**
-
-```bash
-# Apenas participantes
-uv run python -m clean_telegram --export-members <chat_id>
-
-# Apenas mensagens (sem mídia)
-uv run python -m clean_telegram --export-messages <chat_id>
-```
-
-**Especificar diretório de saída:**
-
-```bash
-# Backup em CSV com mídia
-uv run python -m clean_telegram --backup-group <chat_id> --download-media --backup-format both --backup-output meu_backup/
-```
-
-**Identificadores de chat:**
-- ID numérico: `-1001234567890`
-- Username: `@nome_do_grupo`
-- Link: `https://t.me/nome_do_grupo`
-
-**Estrutura de backup criada:**
-```
-backups/
-├── NomeDoGrupo_messages_20260207.json
-├── NomeDoGrupo_participants_20260207.json
-└── media/
-    ├── photo/
-    │   ├── 1701234567_7641443680_12345.jpg
-    │   └── ...
-    ├── video/
-    ├── document/
-    ├── audio/
-    └── sticker/
-```
-
-## Notas
-
-- Em **modo usuário**, na primeira execução o Telethon vai pedir o **número** e o **código** (e 2FA, se houver) e salvar uma sessão local em `session.session`.
-- Em **modo bot**, o login usa `BOT_TOKEN` e a sessão local padrão é `bot_session.session`.
-- Em modo bot, ações destrutivas e backup dependem das permissões administrativas do bot no chat.
-- Pode haver limitações/erros por rate limit do Telegram; o script tenta ser cuidadoso.
-- Relatórios são salvos no diretório `relatorios/` com timestamp no nome do arquivo.
-- O modo `--report` não faz alterações na conta, apenas gera os arquivos de relatório.
+MIT
 </file>
 
 </files>

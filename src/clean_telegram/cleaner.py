@@ -118,6 +118,7 @@ async def clean_all_dialogs(
         # FloodWait retry (não pular o diálogo)
         max_retries = 5
         attempt = 0
+        success = False
         while True:
             try:
                 await _process_dialog(
@@ -128,6 +129,7 @@ async def clean_all_dialogs(
                     dry_run=dry_run,
                 )
                 await safe_sleep(0.35)
+                success = True
                 break
 
             except FloodWaitError as e:
@@ -153,6 +155,8 @@ async def clean_all_dialogs(
                 logger.exception("Erro inesperado em '%s'", title)
                 break
 
-        processed += 1
+        # Só incrementa se processou com sucesso
+        if success:
+            processed += 1
 
     return processed

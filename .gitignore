@@ -72,6 +72,7 @@ htmlcov/
 
 # Logs
 *.log
+.debug/
 
 # Outros
 *.bak

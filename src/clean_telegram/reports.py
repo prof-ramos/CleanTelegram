@@ -202,9 +202,7 @@ async def generate_contacts_report(
         _write_json_report(items, output_file, report_type="contacts")
     elif output_format == "txt":
         _write_txt_report(items, output_file, report_type="contacts")
-    else:
-        # Nunca deve chegar aqui devido à validação acima
-        raise ValueError(f"Formato não suportado: {output_format}")
+    #Nota: else removido pois a validação de formato garante que output_format é válido
 
     return str(output_file)
 

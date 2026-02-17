@@ -9,6 +9,7 @@ from telethon.tl.functions.messages import DeleteChatUserRequest, DeleteHistoryR
 from telethon.tl.types import Channel, Chat, User
 
 from clean_telegram import cleaner
+from tests.conftest import AsyncIteratorMock
 
 # =============================================================================
 # Mocks e Fixtures
@@ -69,22 +70,6 @@ def mock_user():
     dialog.name = "Usuário Teste"
     return dialog
 
-
-class AsyncIterator:
-    """Helper para iterar async em testes."""
-
-    def __init__(self, items):
-        self.items = items
-
-    def __aiter__(self):
-        self.iter = iter(self.items)
-        return self
-
-    async def __anext__(self):
-        try:
-            return next(self.iter)
-        except StopIteration:
-            raise StopAsyncIteration
 
 
 # =============================================================================
@@ -162,7 +147,7 @@ async def test_clean_all_dialogs_dry_run_safety(
     mock_client, mock_channel, mock_chat, mock_user
 ):
     """Garante que NADA é chamado no client em dry_run."""
-    mock_client.iter_dialogs.return_value = AsyncIterator(
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock(
         [mock_channel, mock_chat, mock_user]
     )
 
@@ -177,7 +162,7 @@ async def test_clean_all_dialogs_dry_run_safety(
 @pytest.mark.asyncio
 async def test_clean_all_dialogs_limit(mock_client, mock_channel, mock_chat):
     """Verifica se o limite interrompe o processamento."""
-    mock_client.iter_dialogs.return_value = AsyncIterator(
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock(
         [mock_channel, mock_chat] * 10
     )  # Muitos itens
 
@@ -189,7 +174,7 @@ async def test_clean_all_dialogs_limit(mock_client, mock_channel, mock_chat):
 @pytest.mark.asyncio
 async def test_clean_all_dialogs_channel(mock_client, mock_channel):
     """Testa saída de canal."""
-    mock_client.iter_dialogs.return_value = AsyncIterator([mock_channel])
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock([mock_channel])
 
     await cleaner.clean_all_dialogs(mock_client, dry_run=False)
 
@@ -200,7 +185,7 @@ async def test_clean_all_dialogs_channel(mock_client, mock_channel):
 @pytest.mark.asyncio
 async def test_clean_all_dialogs_user(mock_client, mock_user):
     """Testa deleção de conversa com usuário (DM)."""
-    mock_client.iter_dialogs.return_value = AsyncIterator([mock_user])
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock([mock_user])
 
     await cleaner.clean_all_dialogs(mock_client, dry_run=False)
 
@@ -211,7 +196,7 @@ async def test_clean_all_dialogs_user(mock_client, mock_user):
 @pytest.mark.asyncio
 async def test_clean_all_dialogs_chat_fallback(mock_client, mock_chat):
     """Testa fallback para delete_dialog quando DeleteChatUserRequest falha."""
-    mock_client.iter_dialogs.return_value = AsyncIterator([mock_chat])
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock([mock_chat])
 
     # Configurar side_effect para lançar RPCError na primeira chamada
     # e sucesso na segunda (delete_dialog)
@@ -231,7 +216,7 @@ async def test_clean_all_dialogs_chat_fallback(mock_client, mock_chat):
 @pytest.mark.asyncio
 async def test_clean_all_dialogs_flood_wait_retry(mock_client, mock_user):
     """Testa retry automático em caso de FloodWaitError."""
-    mock_client.iter_dialogs.return_value = AsyncIterator([mock_user])
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock([mock_user])
 
     # Criar erro FloodWait simulado com assinatura correta do Telethon: (request, capture)
     # capture é usado para popular a propriedade .seconds

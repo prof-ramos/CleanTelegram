@@ -3,7 +3,6 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncIterator, Generic, TypeVar
 from unittest import mock
 
 import pytest
@@ -13,25 +12,7 @@ from clean_telegram.backup import (
     send_backup_to_cloud,
 )
 
-T = TypeVar("T")
-
-
-class AsyncIteratorMock(Generic[T]):
-    """Helper para criar async iterators em testes."""
-
-    def __init__(self, items: list[T]):
-        self.items = items
-        self.index = 0
-
-    def __aiter__(self) -> AsyncIterator[T]:
-        return self
-
-    async def __anext__(self) -> T:
-        if self.index >= len(self.items):
-            raise StopAsyncIteration
-        item = self.items[self.index]
-        self.index += 1
-        return item
+from tests.conftest import AsyncIteratorMock
 
 
 # =============================================================================
@@ -413,7 +394,7 @@ class TestBackupGroupWithCloud:
     ):
         """Testa que resumo inclui contagem de mídia quando baixada."""
 
-        # Mock de download_media_from_chat
+        # Mock de download_media_parallel
         async def mock_download(*args, **kwargs):
             return {
                 "photo": 5,
@@ -422,7 +403,7 @@ class TestBackupGroupWithCloud:
             }
 
         with mock.patch(
-            "clean_telegram.backup.download_media_from_chat", side_effect=mock_download
+            "clean_telegram.backup.download_media_parallel", side_effect=mock_download
         ):
             _results = await backup_group_with_media(
                 mock_client_with_both,
