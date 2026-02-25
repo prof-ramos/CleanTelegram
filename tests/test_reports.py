@@ -9,11 +9,13 @@ import pytest
 
 from clean_telegram.reports import (
     _format_status,
+    _safe_getattr,
     _write_csv_report,
     _write_json_report,
     _write_txt_report,
     generate_contacts_report,
     generate_groups_channels_report,
+    validate_output_path,
 )
 
 # Fixtures
@@ -494,3 +496,143 @@ async def test_generate_groups_channels_report_invalid_format(
             output_path=str(output_path),
             output_format="invalid",
         )
+
+
+# =============================================================================
+# Testes: validate_output_path
+# =============================================================================
+
+
+class TestValidateOutputPath:
+    """Testes para validate_output_path()."""
+
+    def test_valid_path_returns_true(self, tmp_path):
+        """Deve retornar (True, '') para caminho válido."""
+        path = str(tmp_path / "output.csv")
+        ok, err = validate_output_path(path)
+        assert ok is True
+        assert err == ""
+
+    def test_creates_parent_directories(self, tmp_path):
+        """Deve criar diretórios pai automaticamente."""
+        path = str(tmp_path / "new_dir" / "subdir" / "output.json")
+        ok, err = validate_output_path(path)
+        assert ok is True
+        assert (tmp_path / "new_dir" / "subdir").exists()
+
+    def test_returns_false_when_path_is_directory(self, tmp_path):
+        """Deve retornar False quando o caminho aponta para diretório existente."""
+        existing_dir = tmp_path / "existingdir"
+        existing_dir.mkdir()
+        ok, err = validate_output_path(str(existing_dir))
+        assert ok is False
+        assert "não é um arquivo" in err or "já existe" in err
+
+    def test_returns_false_on_permission_error(self, tmp_path, monkeypatch):
+        """Deve retornar False quando não há permissão de escrita."""
+        from pathlib import Path as _Path
+
+        original_touch = _Path.touch
+
+        def mock_touch(self, *args, **kwargs):
+            raise PermissionError("Permission denied")
+
+        monkeypatch.setattr(_Path, "touch", mock_touch)
+        path = str(tmp_path / "output.csv")
+        ok, err = validate_output_path(path)
+        assert ok is False
+        assert "permissão" in err.lower() or "Sem permissão" in err
+
+
+# =============================================================================
+# Testes: _safe_getattr
+# =============================================================================
+
+
+class TestSafeGetattr:
+    """Testes para _safe_getattr()."""
+
+    def test_returns_attribute_value(self):
+        """Deve retornar valor do atributo quando existe."""
+        class Obj:
+            x = 42
+
+        assert _safe_getattr(Obj(), "x") == 42
+
+    def test_returns_default_when_attribute_missing(self):
+        """Deve retornar default quando atributo não existe."""
+        class Obj:
+            pass
+
+        assert _safe_getattr(Obj(), "nonexistent") is None
+        assert _safe_getattr(Obj(), "nonexistent", "default") == "default"
+
+    def test_returns_default_on_attribute_error(self):
+        """Deve retornar default quando __getattr__ levanta AttributeError."""
+        class EvilObj:
+            @property
+            def boom(self):
+                raise AttributeError("Property raised error")
+
+        assert _safe_getattr(EvilObj(), "boom", "fallback") == "fallback"
+
+
+# =============================================================================
+# Testes: sort_by e filter_fn nos relatórios
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_generate_groups_channels_report_with_sort(
+    mock_client_with_channels, tmp_path
+):
+    """Deve ordenar itens por campo especificado."""
+    output_path = tmp_path / "sorted.csv"
+    result = await generate_groups_channels_report(
+        mock_client_with_channels,
+        output_path=str(output_path),
+        output_format="csv",
+        sort_by="title",
+        sort_reverse=False,
+    )
+    assert result == str(output_path)
+    assert output_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_generate_groups_channels_report_with_filter(
+    mock_client_with_channels, tmp_path
+):
+    """Deve filtrar itens usando filter_fn."""
+    output_path = tmp_path / "filtered.json"
+    # Filtrar apenas Channel (não Chat legado)
+    result = await generate_groups_channels_report(
+        mock_client_with_channels,
+        output_path=str(output_path),
+        output_format="json",
+        filter_fn=lambda item: item.get("type") == "Channel",
+    )
+    assert result == str(output_path)
+    with open(output_path, encoding="utf-8") as f:
+        data = json.load(f)
+    # Apenas Channel deve estar no resultado (Chat legado é filtrado)
+    assert data["total"] == 1
+    assert data["items"][0]["title"] == "Grupo de Teste"
+
+
+@pytest.mark.asyncio
+async def test_generate_groups_channels_report_empty_warning(
+    mock_client_with_channels, tmp_path, caplog
+):
+    """Deve emitir warning quando nenhum item passa no filtro."""
+    import logging
+
+    output_path = tmp_path / "empty.csv"
+    with caplog.at_level(logging.WARNING, logger="clean_telegram.reports"):
+        await generate_groups_channels_report(
+            mock_client_with_channels,
+            output_path=str(output_path),
+            output_format="csv",
+            filter_fn=lambda item: False,  # Filtra tudo
+        )
+    assert "vazio" in caplog.text.lower() or "Nenhum" in caplog.text

@@ -20,6 +20,7 @@ except ImportError:
     HAS_ORJSON = False
 
 from telethon import TelegramClient
+from telethon.errors import ChatAdminRequiredError
 from telethon.tl.types import User
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,25 @@ def _safe_getattr(obj: Any, attr: str, default: Any = None) -> Any:
         return default
 
 
+def _load_backup_metadata(backup_dir: str, safe_name: str) -> dict:
+    """Carrega metadados do último backup para suporte incremental."""
+    meta_path = Path(backup_dir) / f"{safe_name}_backup_meta.json"
+    if not meta_path.exists():
+        return {}
+    try:
+        with open(meta_path, encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_backup_metadata(backup_dir: str, safe_name: str, metadata: dict) -> None:
+    """Salva metadados do backup para uso em backups incrementais."""
+    meta_path = Path(backup_dir) / f"{safe_name}_backup_meta.json"
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+
 async def export_messages_to_json(
     client: TelegramClient,
     chat_entity,
@@ -168,6 +188,7 @@ async def export_messages_to_json_streaming(
     client: TelegramClient,
     chat_entity,
     output_path: str,
+    min_id: int = 0,
 ) -> int:
     """Exporta mensagens em formato NDJSON (streaming, O(1) memória).
 
@@ -178,6 +199,7 @@ async def export_messages_to_json_streaming(
         client: Cliente Telethon conectado.
         chat_entity: Entidade do chat (grupo/canal).
         output_path: Caminho do arquivo NDJSON de saída.
+        min_id: ID mínimo de mensagem (0 = todas). Usado para backup incremental.
 
     Returns:
         Número de mensagens exportadas.
@@ -192,11 +214,12 @@ async def export_messages_to_json_streaming(
             "export_date": datetime.now().isoformat(),
             "chat_id": chat_entity.id,
             "chat_title": _safe_getattr(chat_entity, "title"),
+            "min_id": min_id,
         }
         f.write(_json_dumps(header))
 
         # Streaming de mensagens (uma por vez em memória)
-        async for message in client.iter_messages(chat_entity):
+        async for message in client.iter_messages(chat_entity, min_id=min_id):
             msg_data = _serialize_message(message)
             f.write(_json_dumps(msg_data))
             count += 1
@@ -208,6 +231,7 @@ async def export_messages_to_csv(
     client: TelegramClient,
     chat_entity,
     output_path: str,
+    min_id: int = 0,
 ) -> int:
     """Exporta todas as mensagens de um chat para CSV.
 
@@ -215,6 +239,7 @@ async def export_messages_to_csv(
         client: Cliente Telethon conectado.
         chat_entity: Entidade do chat (grupo/canal).
         output_path: Caminho do arquivo CSV de saída.
+        min_id: ID mínimo de mensagem (0 = todas). Usado para backup incremental.
 
     Returns:
         Número de mensagens exportadas.
@@ -236,7 +261,7 @@ async def export_messages_to_csv(
             ]
         )
 
-        async for message in client.iter_messages(chat_entity):
+        async for message in client.iter_messages(chat_entity, min_id=min_id):
             sender_name = ""
             sender_username = ""
             if message.sender:
@@ -777,7 +802,7 @@ async def download_media_parallel(
                 return None
 
     # Primeiro: coletar todas as mensagens com mídia
-    download_tasks = []
+    media_messages = []
     async for message in client.iter_messages(chat_entity, limit=limit):
         if not message.media:
             continue
@@ -786,10 +811,25 @@ async def download_media_parallel(
 
         # Pré-filtrar para evitar criar tasks desnecessárias
         if media_types is None or media_type in media_types:
-            download_tasks.append(_download_one(message))
+            media_messages.append(message)
 
-    # Executar downloads em paralelo (com limite do semaphore)
-    results = await asyncio.gather(*download_tasks, return_exceptions=True)
+    # Executar downloads em paralelo com barra de progresso
+    from .ui import progress_bar as ui_progress_bar
+
+    total_media = len(media_messages)
+    if total_media == 0:
+        return counts
+
+    with ui_progress_bar(f"Baixando {total_media} arquivo(s) de mídia", total=total_media) as (prog, task_id):
+        async def _download_tracked(message):
+            result = await _download_one(message)
+            prog.advance(task_id)
+            return result
+
+        results = await asyncio.gather(
+            *[_download_tracked(m) for m in media_messages],
+            return_exceptions=True,
+        )
 
     # Contabilizar resultados
     for result in results:
@@ -808,6 +848,7 @@ async def export_messages_both_formats(
     chat_entity,
     json_path: str,
     csv_path: str,
+    min_id: int = 0,
 ) -> dict[str, int]:
     """Exporta mensagens para JSON e CSV em uma única iteração (~50% mais rápido).
 
@@ -857,7 +898,7 @@ async def export_messages_both_formats(
         # Buffer para mensagens JSON (escrever em chunks)
         json_buffer = []
 
-        async for message in client.iter_messages(chat_entity):
+        async for message in client.iter_messages(chat_entity, min_id=min_id):
             msg_count += 1
 
             # Serializar uma vez
@@ -1044,6 +1085,7 @@ async def backup_group_with_media(
     media_types: list[str] | None = None,
     send_to_cloud: bool = False,
     max_concurrent_downloads: int = 5,
+    incremental: bool = False,
 ) -> dict[str, Any]:
     """Faz backup completo de um grupo incluindo mídia.
 
@@ -1056,6 +1098,7 @@ async def backup_group_with_media(
         media_types: Tipos de mídia para baixar. Se None, baixa todos.
         send_to_cloud: Se True, envia arquivos para Cloud Chat (Saved Messages).
         max_concurrent_downloads: Máximo de downloads paralelos (padrão: 5).
+        incremental: Se True, exporta apenas mensagens novas desde o último backup.
 
     Returns:
         Dicionário com informações do backup realizado.
@@ -1073,15 +1116,29 @@ async def backup_group_with_media(
         "chat_id": chat_entity.id,
         "chat_title": chat_title,
         "backup_date": datetime.now().isoformat(),
+        "incremental": incremental,
     }
+
+    # Backup incremental: determinar min_id com base no último backup
+    min_id = 0
+    if incremental:
+        meta = _load_backup_metadata(output_dir, safe_name)
+        min_id = meta.get("last_message_id", 0)
+        if min_id:
+            logger.info(
+                "Backup incremental: buscando mensagens com ID > %s para '%s'",
+                min_id,
+                chat_title,
+            )
+            results["incremental_from_id"] = min_id
 
     # Exportar mensagens
     if formats == "both":
-        # NOVO: usar função única para iteração única
+        # usar função única para iteração única
         messages_json = f"{output_dir}/{safe_name}_messages_{timestamp}.json"
         messages_csv = f"{output_dir}/{safe_name}_messages_{timestamp}.csv"
         msg_result = await export_messages_both_formats(
-            client, chat_entity, messages_json, messages_csv
+            client, chat_entity, messages_json, messages_csv, min_id=min_id
         )
         results["messages_json"] = messages_json
         results["messages_csv"] = messages_csv
@@ -1089,15 +1146,31 @@ async def backup_group_with_media(
     elif formats == "json":
         messages_json = f"{output_dir}/{safe_name}_messages_{timestamp}.json"
         msg_count = await export_messages_to_json_streaming(
-            client, chat_entity, messages_json
+            client, chat_entity, messages_json, min_id=min_id
         )
         results["messages_json"] = messages_json
         results["messages_count"] = msg_count
     elif formats == "csv":
         messages_csv = f"{output_dir}/{safe_name}_messages_{timestamp}.csv"
-        msg_count = await export_messages_to_csv(client, chat_entity, messages_csv)
+        msg_count = await export_messages_to_csv(
+            client, chat_entity, messages_csv, min_id=min_id
+        )
         results["messages_csv"] = messages_csv
         results["messages_count"] = msg_count
+
+    # Salvar metadados para próximo backup incremental
+    if incremental and results.get("messages_count", 0) > 0:
+        # Obter ID da mensagem mais recente no chat (para uso no próximo incremental)
+        last_message_id = 0
+        async for latest in client.iter_messages(chat_entity, limit=1):
+            last_message_id = latest.id
+            break
+        if last_message_id:
+            _save_backup_metadata(output_dir, safe_name, {
+                "last_message_id": last_message_id,
+                "last_backup_date": datetime.now().isoformat(),
+                "chat_id": chat_entity.id,
+            })
 
     # Exportar participantes (com tratamento de permissão)
     try:
@@ -1129,15 +1202,26 @@ async def backup_group_with_media(
             )
             results["participants_csv"] = participants_csv
             results["participants_count"] = part_count
+    except ChatAdminRequiredError:
+        logger.warning(
+            "Sem permissão para listar participantes do grupo '%s': "
+            "requer permissão de administrador. "
+            "Continuando backup apenas com mensagens.",
+            chat_title,
+        )
+        results["participants_error"] = (
+            "Permissão negada: admin necessário para listar participantes"
+        )
+        results["participants_count"] = 0
     except Exception as e:
-        # Tratar erros de permissão (ChatAdminRequiredError)
-        error_name = type(e).__name__
-        if "ChatAdminRequired" in error_name or "admin" in str(e).lower():
+        # Tratar outros erros relacionados a permissão por heurística
+        if "admin" in str(e).lower():
             logger.warning(
-                "Sem permissão para listar participantes (requer admin). "
-                "Continuando backup apenas com mensagens."
+                "Sem permissão para participantes ('%s'): %s. Continuando.",
+                chat_title,
+                e,
             )
-            results["participants_error"] = "Requer permissão de admin"
+            results["participants_error"] = str(e)
             results["participants_count"] = 0
         else:
             raise  # Re-lança outros erros

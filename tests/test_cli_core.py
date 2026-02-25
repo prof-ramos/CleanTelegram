@@ -49,32 +49,38 @@ class TestConfirmAction:
     """Testes para confirm_action()."""
 
     def test_should_return_true_when_exact_match(self, mock_stdin):
-        """Deve retornar True quando usuário digita 'APAGAR TUDO'."""
-        mock_stdin("APAGAR TUDO")
+        """Deve retornar True quando usuário digita 'CONFIRMAR'."""
+        mock_stdin("CONFIRMAR")
         result = cli.confirm_action()
         assert result is True
 
     def test_should_return_false_for_wrong_input(self, mock_stdin):
         """Deve retornar False para qualquer outro input."""
-        mock_stdin("apagar tudo")  # minúsculas
+        mock_stdin("confirmar")  # minúsculas
         result = cli.confirm_action()
         assert result is False
 
     def test_should_trim_whitespace(self, mock_stdin):
         """Deve fazer trim de whitespace."""
-        mock_stdin("   APAGAR TUDO   ")
+        mock_stdin("   CONFIRMAR   ")
         result = cli.confirm_action()
         assert result is True
 
     def test_should_be_case_sensitive(self, mock_stdin):
         """Deve ser case-sensitive."""
-        mock_stdin("Apagar Tudo")  # Mixed case
+        mock_stdin("Confirmar")  # Mixed case
         result = cli.confirm_action()
         assert result is False
 
     def test_should_require_exact_match(self, mock_stdin):
         """Deve exigir match exato."""
-        mock_stdin("APAGAR TODO")
+        mock_stdin("CONFIRMADO")
+        result = cli.confirm_action()
+        assert result is False
+
+    def test_should_return_false_on_eof(self, monkeypatch):
+        """Deve retornar False ao receber EOFError (ambiente não-TTY)."""
+        monkeypatch.setattr("builtins.input", lambda _="": (_ for _ in ()).throw(EOFError()))
         result = cli.confirm_action()
         assert result is False
 
@@ -89,8 +95,8 @@ class TestRunClean:
         mock_telethon_client.get_me = mocker.AsyncMock()
         args = mock.Mock(dry_run=True, limit=10)
 
-        # Mock clean_all_dialogs
-        mock_clean = mocker.patch("clean_telegram.cli.clean_all_dialogs", return_value=5)
+        # Mock clean_all_dialogs — retorna (processed, skipped)
+        mock_clean = mocker.patch("clean_telegram.cli.clean_all_dialogs", return_value=(5, 0))
 
         # Execute
         await cli.run_clean(args, mock_telethon_client)
@@ -112,7 +118,7 @@ class TestRunClean:
         mock_telethon_client.get_me = mocker.AsyncMock(return_value=me)
 
         args = mock.Mock(dry_run=True, limit=0)
-        mocker.patch("clean_telegram.cli.clean_all_dialogs", return_value=0)
+        mocker.patch("clean_telegram.cli.clean_all_dialogs", return_value=(0, 0))
 
         with caplog.at_level("INFO"):
             await cli.run_clean(args, mock_telethon_client)
@@ -123,7 +129,7 @@ class TestRunClean:
     async def test_should_respect_dry_run(self, mock_telethon_client, mocker):
         """Deve passar dry_run corretamente."""
         mock_telethon_client.get_me = mocker.AsyncMock()
-        mock_clean = mocker.patch("clean_telegram.cli.clean_all_dialogs")
+        mock_clean = mocker.patch("clean_telegram.cli.clean_all_dialogs", return_value=(0, 0))
 
         args = mock.Mock(dry_run=True, limit=0)
         await cli.run_clean(args, mock_telethon_client)
@@ -135,7 +141,7 @@ class TestRunClean:
     async def test_should_respect_limit(self, mock_telethon_client, mocker):
         """Deve passar limit corretamente."""
         mock_telethon_client.get_me = mocker.AsyncMock()
-        mock_clean = mocker.patch("clean_telegram.cli.clean_all_dialogs")
+        mock_clean = mocker.patch("clean_telegram.cli.clean_all_dialogs", return_value=(0, 0))
 
         args = mock.Mock(dry_run=True, limit=50)
         await cli.run_clean(args, mock_telethon_client)

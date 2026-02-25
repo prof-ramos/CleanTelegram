@@ -59,10 +59,9 @@ def mock_console(mocker):
 
 @pytest.fixture
 def mock_stdin(monkeypatch):
-    """Factory para mock de sys.stdin em testes de CLI interativo."""
+    """Factory para mock de builtins.input em testes de CLI interativo."""
     def _make_input(text: str):
-        from io import StringIO
-        monkeypatch.setattr(sys, "stdin", StringIO(text + "\n"))
+        monkeypatch.setattr("builtins.input", lambda _="": text)
     return _make_input
 
 

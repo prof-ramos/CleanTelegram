@@ -73,6 +73,21 @@ def parse_args() -> argparse.Namespace:
         help="Modo interativo com menus visuais.",
     )
 
+    # Controle de verbosidade
+    verbosity_group = parser.add_mutually_exclusive_group()
+    verbosity_group.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Saída detalhada (nível DEBUG).",
+    )
+    verbosity_group.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Suprime mensagens informativas (apenas WARNING+).",
+    )
+
     # Opções de relatório
     parser.add_argument(
         "--report",
@@ -185,16 +200,23 @@ async def start_client(client: TelegramClient, auth_config: AuthConfig) -> None:
     await client.start()
 
 
+CONFIRM_PHRASE = "CONFIRMAR"
+
+
 def confirm_action() -> bool:
     """Pede confirmação do usuário antes de executar ação destrutiva."""
     print(
-        "ATENÇÃO: isso vai apagar conversas e sair de grupos/canais.\n"
-        "Digite 'APAGAR TUDO' para confirmar: ",
+        "\n[ATENÇÃO] Esta ação vai apagar TODAS as conversas e sair de TODOS os grupos/canais.\n"
+        "Esta operação é IRREVERSÍVEL.\n"
+        f"Digite '{CONFIRM_PHRASE}' para prosseguir (ou qualquer outra coisa para cancelar): ",
         end="",
         flush=True,
     )
-    confirm = sys.stdin.readline().strip()
-    return confirm == "APAGAR TUDO"
+    try:
+        confirm = input("").strip()
+    except EOFError:
+        return False
+    return confirm == CONFIRM_PHRASE
 
 
 def _get_timestamp() -> str:
@@ -283,13 +305,17 @@ async def run_clean(args: argparse.Namespace, client: TelegramClient) -> None:
         me.id,
     )
 
-    processed = await clean_all_dialogs(
+    processed, skipped = await clean_all_dialogs(
         client,
         dry_run=args.dry_run,
         limit=args.limit,
     )
 
-    logger.info("Concluído. Diálogos processados: %s", processed)
+    logger.info(
+        "Concluído. Diálogos processados: %s (ignorados pelo filtro: %s)",
+        processed,
+        skipped,
+    )
 
 
 async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
@@ -416,13 +442,25 @@ async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
 
 async def main() -> None:
     """Entry-point assíncrono."""
+    load_dotenv()
+    args = parse_args()
+
+    # Configurar nível de logging baseado em flags de verbosidade
+    if args.verbose:
+        log_level = logging.DEBUG
+    elif args.quiet:
+        log_level = logging.WARNING
+    else:
+        log_level = logging.INFO
+
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    load_dotenv()
-    args = parse_args()
+    # Aplicar verbosidade na UI
+    from .ui import set_verbosity
+    set_verbosity(verbose=args.verbose, quiet=args.quiet)
 
     client, auth_config = create_client()
     logger.info(
@@ -435,7 +473,7 @@ async def main() -> None:
     if args.interactive:
         async with client:
             await start_client(client, auth_config)
-            await interactive_main(client)
+            await interactive_main(client, args)
         return
 
     # Verificar se é modo backup (não precisa de confirmação)

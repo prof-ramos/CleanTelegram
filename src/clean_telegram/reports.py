@@ -5,12 +5,16 @@ Gera relatórios de grupos, canais e contatos em diversos formatos.
 
 import csv
 import json
+import logging
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from telethon import TelegramClient
 from telethon.tl.types import Channel, Chat, User
+
+logger = logging.getLogger(__name__)
 
 
 def _get_timestamp() -> str:
@@ -49,10 +53,34 @@ def _is_user(entity: Any) -> bool:
     ) and not _is_channel(entity) and not _is_chat(entity)
 
 
+def validate_output_path(path: str) -> tuple[bool, str]:
+    """Valida se o caminho de saída é gravável.
+
+    Returns:
+        (is_valid, error_message) — error_message é string vazia se válido.
+    """
+    try:
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if p.exists() and not p.is_file():
+            return False, f"O caminho '{path}' já existe e não é um arquivo."
+        test_file = p.parent / ".cleantelegram_write_test"
+        test_file.touch()
+        test_file.unlink()
+        return True, ""
+    except PermissionError:
+        return False, f"Sem permissão de escrita no diretório '{Path(path).parent}'."
+    except OSError as e:
+        return False, f"Caminho inválido: {e}"
+
+
 async def generate_groups_channels_report(
     client: TelegramClient,
     output_path: str | None = None,
     output_format: str = "csv",
+    sort_by: str | None = None,
+    sort_reverse: bool = False,
+    filter_fn: Callable[[dict], bool] | None = None,
 ) -> str:
     """Gera relatório de grupos e canais.
 
@@ -60,6 +88,9 @@ async def generate_groups_channels_report(
         client: Cliente Telethon conectado.
         output_path: Caminho do arquivo de saída. Se None, usa padrão com timestamp.
         output_format: Formato do relatório (csv, json ou txt).
+        sort_by: Campo para ordenar (ex: "title", "participants_count", "date").
+        sort_reverse: Se True, ordena em ordem decrescente.
+        filter_fn: Função opcional de filtro; recebe dict do item, retorna bool.
 
     Returns:
         Caminho do arquivo gerado.
@@ -103,6 +134,24 @@ async def generate_groups_channels_report(
 
         items.append(item)
 
+    # Aplicar filtro
+    if filter_fn is not None:
+        items = [item for item in items if filter_fn(item)]
+
+    # Aplicar ordenação
+    if sort_by is not None and items:
+        items.sort(
+            key=lambda x: (x.get(sort_by) or ""),
+            reverse=sort_reverse,
+        )
+
+    # Avisar se vazio
+    if not items:
+        logger.warning(
+            "Nenhum grupo ou canal encontrado para o relatório. "
+            "O arquivo será criado vazio."
+        )
+
     # Validar formato antes de processar
     valid_formats = {"csv", "json", "txt"}
     if output_format not in valid_formats:
@@ -111,7 +160,7 @@ async def generate_groups_channels_report(
     # Determinar caminho de saída
     if output_path is None:
         timestamp = _get_timestamp()
-        suffix = output_format  # O formato já é a extensão
+        suffix = output_format
         output_path = f"relatorios/groups_channels_{timestamp}.{suffix}"
 
     output_file = Path(output_path)
@@ -132,6 +181,9 @@ async def generate_contacts_report(
     client: TelegramClient,
     output_path: str | None = None,
     output_format: str = "csv",
+    sort_by: str | None = None,
+    sort_reverse: bool = False,
+    filter_fn: Callable[[dict], bool] | None = None,
 ) -> str:
     """Gera relatório de contatos e usuários.
 
@@ -139,6 +191,9 @@ async def generate_contacts_report(
         client: Cliente Telethon conectado.
         output_path: Caminho do arquivo de saída. Se None, usa padrão com timestamp.
         output_format: Formato do relatório (csv, json ou txt).
+        sort_by: Campo para ordenar (ex: "name", "status").
+        sort_reverse: Se True, ordena em ordem decrescente.
+        filter_fn: Função opcional de filtro; recebe dict do item, retorna bool.
 
     Returns:
         Caminho do arquivo gerado.
@@ -181,6 +236,24 @@ async def generate_contacts_report(
 
         items.append(item)
 
+    # Aplicar filtro
+    if filter_fn is not None:
+        items = [item for item in items if filter_fn(item)]
+
+    # Aplicar ordenação
+    if sort_by is not None and items:
+        items.sort(
+            key=lambda x: (x.get(sort_by) or ""),
+            reverse=sort_reverse,
+        )
+
+    # Avisar se vazio
+    if not items:
+        logger.warning(
+            "Nenhum contato encontrado para o relatório. "
+            "O arquivo será criado vazio."
+        )
+
     # Validar formato antes de processar
     valid_formats = {"csv", "json", "txt"}
     if output_format not in valid_formats:
@@ -189,7 +262,7 @@ async def generate_contacts_report(
     # Determinar caminho de saída
     if output_path is None:
         timestamp = _get_timestamp()
-        suffix = output_format  # O formato já é a extensão
+        suffix = output_format
         output_path = f"relatorios/contacts_{timestamp}.{suffix}"
 
     output_file = Path(output_path)
@@ -202,7 +275,6 @@ async def generate_contacts_report(
         _write_json_report(items, output_file, report_type="contacts")
     elif output_format == "txt":
         _write_txt_report(items, output_file, report_type="contacts")
-    #Nota: else removido pois a validação de formato garante que output_format é válido
 
     return str(output_file)
 
@@ -391,11 +463,9 @@ async def generate_all_reports(
     """
     results = {}
 
-    # Gerar relatório de grupos e canais
     groups_path = await generate_groups_channels_report(client, output_format=output_format)
     results["groups_channels"] = groups_path
 
-    # Gerar relatório de contatos
     contacts_path = await generate_contacts_report(client, output_format=output_format)
     results["contacts"] = contacts_path
 

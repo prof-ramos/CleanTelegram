@@ -4,8 +4,7 @@ import logging
 from unittest import mock
 
 import pytest
-from rich.console import Console
-from rich.panel import Panel
+from rich.progress import Progress
 from rich.table import Table
 
 from clean_telegram import ui
@@ -16,12 +15,8 @@ class TestSuppressTelethonLogs:
 
     def test_should_set_critical_level_during_context(self, telethon_logger):
         """Deve definir logger level como CRITICAL dentro do contexto."""
-        original_level = telethon_logger.level
-
         with ui.suppress_telethon_logs():
             assert telethon_logger.level == logging.CRITICAL
-
-        # Fixture telethon_logger garante restauração automática no teardown
 
     def test_should_restore_level_after_context(self):
         """Deve restaurar level original após sair do contexto."""
@@ -39,7 +34,6 @@ class TestSuppressTelethonLogs:
         telethon_logger = logging.getLogger("telethon")
         telethon_logger.setLevel(logging.CRITICAL)
 
-        # Não deve lançar exceção
         with ui.suppress_telethon_logs():
             assert telethon_logger.level == logging.CRITICAL
 
@@ -56,42 +50,72 @@ class TestSpinner:
     def test_should_use_default_spinner_type(self):
         """Deve usar spinner type 'dots' por padrão."""
         result = ui.spinner("Test")
-        # O status é criado com o spinner padrão "dots"
         assert result is not None
 
     def test_should_accept_custom_spinner_type(self):
         """Deve aceitar tipo de spinner customizado."""
         result = ui.spinner("Test", spinner_type="line")
-        # Verifica que não lança exceção
         assert result is not None
 
 
-class TestPrintHeader:
-    """Testes para print_header()."""
+class TestProgressBar:
+    """Testes para progress_bar()."""
 
-    def test_should_print_panel_with_title(self, mock_console):
-        """Deve exibir painel com título."""
-        ui.print_header("Título Teste")
+    def test_should_return_context_manager(self):
+        """Deve retornar um context manager."""
+        cm = ui.progress_bar("Testando", total=10)
+        assert hasattr(cm, "__enter__")
+        assert hasattr(cm, "__exit__")
 
-        mock_console.print.assert_called_once()
-        call_args = mock_console.print.call_args
-        assert isinstance(call_args[0][0], Panel)
+    def test_should_yield_progress_and_task(self):
+        """Deve fornecer (Progress, task_id) ao entrar no contexto."""
+        with ui.progress_bar("Testando", total=5) as (prog, task):
+            assert isinstance(prog, Progress)
+            assert task is not None
 
-    def test_should_include_subtitle_when_provided(self, mock_console):
-        """Deve incluir subtítulo quando fornecido."""
-        ui.print_header("Título", subtitle="Subtítulo Teste")
+    def test_should_work_without_total(self):
+        """Deve funcionar com total=None (indeterminado)."""
+        with ui.progress_bar("Indeterminado") as (prog, task):
+            assert isinstance(prog, Progress)
 
-        mock_console.print.assert_called_once()
-        call_args = mock_console.print.call_args
-        panel = call_args[0][0]
-        assert isinstance(panel, Panel)
-        # O subtitle é adicionado ao Text dentro do Panel, verificamos que foi chamado
+    def test_should_allow_advance(self):
+        """Deve permitir avançar o progresso sem erros."""
+        with ui.progress_bar("Avançando", total=3) as (prog, task):
+            prog.advance(task)
+            prog.advance(task)
+            prog.advance(task)
 
-    def test_should_work_without_subtitle(self, mock_console):
-        """Deve funcionar sem subtítulo."""
-        ui.print_header("Apenas Título")
 
-        mock_console.print.assert_called_once()
+class TestSetVerbosity:
+    """Testes para set_verbosity()."""
+
+    def teardown_method(self):
+        """Restaurar verbosidade padrão após cada teste."""
+        ui.set_verbosity()
+
+    def test_defaults_are_false(self):
+        """Por padrão, verbose e quiet são False."""
+        ui.set_verbosity()
+        assert ui.is_verbose() is False
+        assert ui.is_quiet() is False
+
+    def test_set_verbose(self):
+        """Deve ativar modo verbose."""
+        ui.set_verbosity(verbose=True)
+        assert ui.is_verbose() is True
+        assert ui.is_quiet() is False
+
+    def test_set_quiet(self):
+        """Deve ativar modo quiet."""
+        ui.set_verbosity(quiet=True)
+        assert ui.is_quiet() is True
+        assert ui.is_verbose() is False
+
+    def test_reset_after_setting(self):
+        """Deve resetar ao chamar sem argumentos."""
+        ui.set_verbosity(verbose=True)
+        ui.set_verbosity()
+        assert ui.is_verbose() is False
 
 
 class TestPrintStatsTable:
@@ -113,7 +137,6 @@ class TestPrintStatsTable:
         call_args = mock_console.print.call_args
         table = call_args[0][0]
         assert isinstance(table, Table)
-        # A formatação é aplicada pela função, verificamos que a tabela foi criada
 
     def test_should_handle_non_integers_as_string(self, mock_console):
         """Deve tratar não-inteiros como string."""
@@ -123,7 +146,6 @@ class TestPrintStatsTable:
         call_args = mock_console.print.call_args
         table = call_args[0][0]
         assert isinstance(table, Table)
-        # Valores não-inteiros são tratados como string, verificamos que a tabela foi criada
 
     def test_should_accept_custom_title_style(self, mock_console):
         """Deve aceitar estilo customizado para título."""
@@ -156,6 +178,21 @@ class TestPrintError:
         call_args = mock_console.print.call_args[0][0]
         assert "❌" in call_args
         assert "[bold red]" in call_args
+
+    def test_should_print_hint_when_provided(self, mock_console):
+        """Deve exibir dica quando hint é fornecido."""
+        ui.print_error("Erro!", hint="Tente novamente.")
+
+        assert mock_console.print.call_count == 2
+        hint_call = mock_console.print.call_args_list[1][0][0]
+        assert "💡" in hint_call
+        assert "Tente novamente." in hint_call
+
+    def test_should_not_print_hint_when_none(self, mock_console):
+        """Não deve imprimir segunda linha se hint=None."""
+        ui.print_error("Erro!")
+
+        assert mock_console.print.call_count == 1
 
 
 class TestPrintWarning:
@@ -192,3 +229,27 @@ class TestPrintTip:
         call_args = mock_console.print.call_args[0][0]
         assert "💡" in call_args
         assert "[dim]" in call_args
+
+
+class TestPrintFloodwait:
+    """Testes para print_floodwait()."""
+
+    def test_should_print_floodwait_message(self, mock_console):
+        """Deve exibir mensagem de FloodWait formatada."""
+        ui.print_floodwait("Grupo Teste", 10, 1, 5)
+
+        mock_console.print.assert_called_once()
+        call_args = mock_console.print.call_args[0][0]
+        assert "FloodWait" in call_args
+        assert "Grupo Teste" in call_args
+        assert "10s" in call_args
+        assert "1/5" in call_args
+
+
+class TestCustomStyle:
+    """Testes para CUSTOM_STYLE."""
+
+    def test_custom_style_is_defined(self):
+        """CUSTOM_STYLE deve estar definido em ui.py."""
+        import questionary
+        assert isinstance(ui.CUSTOM_STYLE, questionary.Style)

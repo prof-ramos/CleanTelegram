@@ -446,11 +446,11 @@ class TestBackupGroupWithCloud:
 
         # Simular situação onde arquivo JSON não foi criado (retorna vazio)
         # As funções de exportação não criam arquivos, então não haverá arquivos para enviar
-        async def mock_export_msgs(client, entity, path):
+        async def mock_export_msgs(client, entity, path, **kwargs):
             # Não cria arquivo
             return 0
 
-        async def mock_export_parts(client, entity, path):
+        async def mock_export_parts(client, entity, path, **kwargs):
             # Não cria arquivo
             return 0
 
