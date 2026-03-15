@@ -14,7 +14,7 @@ from telethon import TelegramClient
 from telethon.errors import RPCError
 
 from .backup import backup_group_with_media
-from .cleaner import clean_all_dialogs
+from .cleaner import clean_all_dialogs, leave_non_owned_groups
 from .interactive import interactive_main
 from .reports import (
     generate_all_reports,
@@ -139,6 +139,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Envia arquivos de backup para Cloud Chat (Saved Messages).",
     )
+    # Opção de sair de grupos não-próprios
+    parser.add_argument(
+        "--leave-non-owned",
+        action="store_true",
+        help="Sai de todos os grupos/canais que você NÃO é o criador.",
+    )
+
     parser.add_argument(
         "--max-concurrent-downloads",
         type=int,
@@ -414,6 +421,28 @@ async def run_backup(args: argparse.Namespace, client: TelegramClient) -> None:
             logger.info(f"Mensagens exportadas (CSV): {count} -> {output_path}")
 
 
+async def run_leave_non_owned(args: argparse.Namespace, client: TelegramClient) -> None:
+    """Sai de todos os grupos/canais onde o usuário não é o criador."""
+    me = await client.get_me()
+    logger.info(
+        "Logado como: %s (id=%s)",
+        me.username or me.first_name,
+        me.id,
+    )
+
+    left, skipped = await leave_non_owned_groups(
+        client,
+        dry_run=args.dry_run,
+        limit=args.limit,
+    )
+
+    logger.info(
+        "Concluído. Saiu de %s grupo(s), pulou %s grupo(s) próprio(s).",
+        left,
+        skipped,
+    )
+
+
 async def main() -> None:
     """Entry-point assíncrono."""
     logging.basicConfig(
@@ -447,9 +476,22 @@ async def main() -> None:
 
     # Verificar se é modo relatório (não precisa de confirmação)
     is_report_mode = args.report is not None
-    is_clean_mode = not is_backup_mode and not is_report_mode
+    is_leave_non_owned = args.leave_non_owned
+    is_clean_mode = not is_backup_mode and not is_report_mode and not is_leave_non_owned
 
-    if not is_backup_mode and not is_report_mode and not args.dry_run and not args.yes:
+    if is_leave_non_owned:
+        if not args.dry_run and not args.yes:
+            print(
+                "ATENÇÃO: isso vai sair de todos os grupos/canais que você NÃO é o criador.\n"
+                "Digite 'SAIR' para confirmar: ",
+                end="",
+                flush=True,
+            )
+            confirm = sys.stdin.readline().strip()
+            if confirm != "SAIR":
+                print("Cancelado.")
+                return
+    elif not is_backup_mode and not is_report_mode and not args.dry_run and not args.yes:
         if not confirm_action():
             print("Cancelado.")
             return
@@ -463,7 +505,9 @@ async def main() -> None:
     async with client:
         await start_client(client, auth_config)
         try:
-            if is_backup_mode:
+            if is_leave_non_owned:
+                await run_leave_non_owned(args, client)
+            elif is_backup_mode:
                 await run_backup(args, client)
             elif is_report_mode:
                 await run_report(args, client)

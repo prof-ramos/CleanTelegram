@@ -160,3 +160,95 @@ async def clean_all_dialogs(
             processed += 1
 
     return processed
+
+
+async def leave_non_owned_groups(
+    client: TelegramClient,
+    *,
+    dry_run: bool,
+    limit: int = 0,
+) -> tuple[int, int]:
+    """Sai de todos os grupos/canais onde o usuário NÃO é o criador.
+
+    Args:
+        client: Cliente Telethon conectado.
+        dry_run: Se True, não faz alterações (só imprime).
+        limit: Limite de grupos para processar (0 = todos).
+
+    Returns:
+        Tupla (left_count, skipped_count) — quantos saiu e quantos pulou (criador).
+    """
+    left = 0
+    skipped = 0
+
+    async for d in client.iter_dialogs():
+        if limit and left >= limit:
+            break
+
+        entity = d.entity
+        title = d.name or "(sem nome)"
+
+        # Só processa grupos (Channel/Chat), ignora conversas privadas (User)
+        if not isinstance(entity, (Channel, Chat)):
+            continue
+
+        # Pular grupos onde o usuário é o criador
+        if getattr(entity, "creator", False):
+            logger.info("PULANDO (criador): %s", title)
+            skipped += 1
+            continue
+
+        index = left + 1
+
+        # FloodWait retry
+        max_retries = 5
+        attempt = 0
+        success = False
+        while True:
+            try:
+                if isinstance(entity, Channel):
+                    logger.info("[%s] SAIR de canal/megagrupo (não-próprio): %s", index, title)
+                    await leave_channel(client, entity, dry_run=dry_run)
+                else:
+                    logger.info("[%s] SAIR de grupo legado (não-próprio): %s", index, title)
+                    try:
+                        await leave_legacy_chat(client, entity, dry_run=dry_run)
+                    except RPCError:
+                        logger.warning(
+                            "Falha ao sair via DeleteChatUserRequest; tentando fallback: %s",
+                            title,
+                        )
+                        if not dry_run:
+                            await client.delete_dialog(entity)
+
+                await safe_sleep(0.35)
+                success = True
+                break
+
+            except FloodWaitError as e:
+                attempt += 1
+                wait_s = max(5, int(getattr(e, "seconds", 0) or 0))
+                logger.warning(
+                    "Rate limit (FloodWait) em '%s'. Aguardando %ss (tentativa %s/%s)...",
+                    title,
+                    wait_s,
+                    attempt,
+                    max_retries,
+                )
+                await asyncio.sleep(wait_s)
+                if attempt >= max_retries:
+                    logger.error("Max retries atingido; pulando '%s'.", title)
+                    break
+
+            except RPCError:
+                logger.exception("RPCError em '%s'", title)
+                break
+
+            except Exception:
+                logger.exception("Erro inesperado em '%s'", title)
+                break
+
+        if success:
+            left += 1
+
+    return left, skipped

@@ -10,7 +10,7 @@ import questionary
 from telethon import TelegramClient
 
 from .backup import backup_group_with_media
-from .cleaner import clean_all_dialogs
+from .cleaner import clean_all_dialogs, leave_non_owned_groups
 from .reports import (
     generate_all_reports,
     generate_contacts_report,
@@ -69,6 +69,11 @@ async def interactive_main(client: TelegramClient) -> None:
                         description="Faz backup de mensagens e participantes",
                     ),
                     questionary.Choice(
+                        "🚪 Sair de grupos não-próprios",
+                        value="leave_non_owned",
+                        description="Sai de grupos/canais que você NÃO criou",
+                    ),
+                    questionary.Choice(
                         "⚙️  Ver estatísticas",
                         value="stats",
                         description="Mostra informações da conta",
@@ -87,6 +92,8 @@ async def interactive_main(client: TelegramClient) -> None:
             await interactive_reports(client)
         elif action == "backup":
             await interactive_backup(client)
+        elif action == "leave_non_owned":
+            await interactive_leave_non_owned(client)
         elif action == "stats":
             await interactive_stats(client)
 
@@ -165,6 +172,80 @@ async def interactive_clean(client: TelegramClient) -> None:
     except Exception as e:
         print(f"\n❌ Erro durante limpeza: {e}")
         logger.exception("Erro na limpeza interativa")
+
+
+async def interactive_leave_non_owned(client: TelegramClient) -> None:
+    """Fluxo interativo para sair de grupos não-próprios."""
+    confirm = await questionary.confirm(
+        "⚠️  Esta ação vai sair de todos os grupos/canais que você NÃO é o criador.\n"
+        "   • Grupos que você criou serão mantidos\n"
+        "   • Conversas privadas (DMs) NÃO serão afetadas\n\n"
+        "Deseja continuar?",
+        default=False,
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    if not confirm:
+        print("\n❌ Operação cancelada.")
+        return
+
+    # Modo dry-run
+    dry_run = await questionary.confirm(
+        "Executar em modo dry-run (simulação)?",
+        default=True,
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    # Confirmação adicional se não for dry-run
+    if not dry_run:
+        confirm_real = await questionary.confirm(
+            "🔴 Confirma que deseja EXECUTAR de verdade?",
+            default=False,
+            style=CUSTOM_STYLE,
+        ).ask_async()
+
+        if not confirm_real:
+            print("\n❌ Operação cancelada.")
+            return
+
+    # Limite de grupos
+    limit_choice = await questionary.select(
+        "Quantos grupos processar?",
+        choices=[
+            questionary.Choice("Todos os grupos", value=0),
+            questionary.Choice("Apenas os primeiros 10", value=10),
+            questionary.Choice("Apenas os primeiros 50", value=50),
+            questionary.Choice("Cancelar", value=None),
+        ],
+        style=CUSTOM_STYLE,
+    ).ask_async()
+
+    if limit_choice is None:
+        print("\n❌ Operação cancelada.")
+        return
+
+    print(f"\n{'🔍 Simulando' if dry_run else '🚀 Executando'} saída de grupos não-próprios...")
+
+    try:
+        left, skipped = await leave_non_owned_groups(
+            client,
+            dry_run=dry_run,
+            limit=limit_choice,
+        )
+
+        if dry_run:
+            print(
+                f"\n✅ Simulação concluída! Sairia de {left} grupo(s), "
+                f"manteria {skipped} grupo(s) próprio(s)."
+            )
+        else:
+            print(
+                f"\n✅ Concluído! Saiu de {left} grupo(s), "
+                f"manteve {skipped} grupo(s) próprio(s)."
+            )
+    except Exception as e:
+        print(f"\n❌ Erro: {e}")
+        logger.exception("Erro ao sair de grupos não-próprios")
 
 
 async def interactive_reports(client: TelegramClient) -> None:

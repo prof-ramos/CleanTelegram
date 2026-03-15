@@ -236,3 +236,119 @@ async def test_clean_all_dialogs_flood_wait_retry(mock_client, mock_user):
 
     # Deve ter chamado duas vezes (1 falha + 1 sucesso)
     assert mock_client.call_count == 2
+
+
+# =============================================================================
+# Testes de leave_non_owned_groups
+# =============================================================================
+
+
+def _make_group_dialog(entity_cls, *, creator=False, title="Grupo"):
+    """Helper para criar mock de diálogo com atributo creator."""
+    entity = mock.Mock(spec=entity_cls)
+    entity.id = hash(title) % 10000
+    entity.creator = creator
+    dialog = mock.Mock()
+    dialog.entity = entity
+    dialog.name = title
+    return dialog
+
+
+@pytest.mark.asyncio
+async def test_leave_non_owned_skips_owned_channels(mock_client):
+    """Garante que grupos onde o usuário é criador são pulados."""
+    owned = _make_group_dialog(Channel, creator=True, title="Meu Canal")
+    not_owned = _make_group_dialog(Channel, creator=False, title="Canal Alheio")
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock([owned, not_owned])
+
+    left, skipped = await cleaner.leave_non_owned_groups(mock_client, dry_run=False)
+
+    assert left == 1
+    assert skipped == 1
+    # Deve ter chamado LeaveChannelRequest apenas para o não-próprio
+    args, _ = mock_client.call_args
+    assert isinstance(args[0], LeaveChannelRequest)
+    assert args[0].channel == not_owned.entity
+
+
+@pytest.mark.asyncio
+async def test_leave_non_owned_skips_owned_chats(mock_client):
+    """Garante que chats legados onde o usuário é criador são pulados."""
+    owned = _make_group_dialog(Chat, creator=True, title="Meu Grupo")
+    not_owned = _make_group_dialog(Chat, creator=False, title="Grupo Alheio")
+    not_owned.entity.id = 999
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock([owned, not_owned])
+
+    left, skipped = await cleaner.leave_non_owned_groups(mock_client, dry_run=False)
+
+    assert left == 1
+    assert skipped == 1
+    args, _ = mock_client.call_args
+    assert isinstance(args[0], DeleteChatUserRequest)
+
+
+@pytest.mark.asyncio
+async def test_leave_non_owned_skips_users(mock_client):
+    """Garante que conversas privadas (User) são completamente ignoradas."""
+    user_dialog = mock.Mock()
+    user_dialog.entity = mock.Mock(spec=User)
+    user_dialog.name = "Fulano"
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock([user_dialog])
+
+    left, skipped = await cleaner.leave_non_owned_groups(mock_client, dry_run=False)
+
+    assert left == 0
+    assert skipped == 0
+    mock_client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_leave_non_owned_dry_run(mock_client):
+    """Garante que dry_run não faz alterações."""
+    not_owned = _make_group_dialog(Channel, creator=False, title="Canal Alheio")
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock([not_owned])
+
+    left, skipped = await cleaner.leave_non_owned_groups(mock_client, dry_run=True)
+
+    assert left == 1
+    assert skipped == 0
+    mock_client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_leave_non_owned_limit(mock_client):
+    """Verifica que o limite funciona corretamente."""
+    groups = [
+        _make_group_dialog(Channel, creator=False, title=f"Grupo {i}")
+        for i in range(10)
+    ]
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock(groups)
+
+    left, skipped = await cleaner.leave_non_owned_groups(
+        mock_client, dry_run=True, limit=3
+    )
+
+    assert left == 3
+
+
+@pytest.mark.asyncio
+async def test_leave_non_owned_mixed(mock_client):
+    """Testa cenário misto: owned, not-owned, users."""
+    owned_channel = _make_group_dialog(Channel, creator=True, title="Meu Canal")
+    not_owned_channel = _make_group_dialog(Channel, creator=False, title="Canal Alheio")
+    owned_chat = _make_group_dialog(Chat, creator=True, title="Meu Grupo")
+    not_owned_chat = _make_group_dialog(Chat, creator=False, title="Grupo Alheio")
+    not_owned_chat.entity.id = 777
+
+    user_dialog = mock.Mock()
+    user_dialog.entity = mock.Mock(spec=User)
+    user_dialog.name = "Fulano"
+
+    mock_client.iter_dialogs.return_value = AsyncIteratorMock([
+        owned_channel, not_owned_channel, owned_chat, not_owned_chat, user_dialog
+    ])
+
+    left, skipped = await cleaner.leave_non_owned_groups(mock_client, dry_run=True)
+
+    assert left == 2  # not_owned_channel + not_owned_chat
+    assert skipped == 2  # owned_channel + owned_chat
